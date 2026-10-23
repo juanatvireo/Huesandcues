@@ -2,10 +2,13 @@
 
 Juego de pistas y colores para jugar en familia, inspirado en los juegos de adivinar colores con pistas.
 
-Hay dos formas de jugar:
+Hay tres formas de jugar:
 
-- **Todos en este iPad:** se pasan el iPad de mano en mano.
-- **Cada uno con su celular:** el iPad muestra el tablero y la sala. Cada persona escanea el código QR con su celular y juega desde ahí, sin crear cuentas.
+- **Un solo iPad:** se pasan el iPad de mano en mano.
+- **iPad + celulares:** el iPad muestra el tablero y la sala. Cada persona escanea el código QR con su celular y juega desde ahí, sin crear cuentas.
+- **Solo celulares:** un celular abre la sala y también juega; los demás entran con el código QR. El celular que abre la sala debe mantener la pantalla encendida.
+
+Opciones: tiempo límite para colocar cada ficha (30, 60 o 90 segundos) y un botón **Apurar** para presionar, con sonido, a quien está tardando. Toca tu nombre durante la partida para ver cómo van los puntos.
 
 ## Publicarlo con GitHub Pages
 
