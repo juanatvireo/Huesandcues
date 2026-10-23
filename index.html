@@ -228,6 +228,12 @@ input.text:focus { border-color: var(--ink); outline: none; }
 .seg button[aria-pressed="true"] { background: var(--ink); color: var(--on-ink); }
 .linkbtn { border: 0; background: none; color: var(--ink); font: 700 16px/1 var(--body); text-decoration: underline; text-underline-offset: 3px; padding: 10px 4px; cursor: pointer; }
 .setting { display: flex; flex-direction: column; gap: 8px; }
+.choices { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.choice { border: 2px solid var(--line); border-radius: 18px; padding: 18px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.choice p { font-size: 15px; }
+.choice button.primary { margin-top: auto; }
+.back { margin-right: auto; }
+#joincode { text-transform: uppercase; letter-spacing: 0.2em; }
 
 .lobby { display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: center; }
 .qr { width: 180px; height: 180px; background: #fff; border-radius: 14px; padding: 10px; flex: none; }
@@ -315,6 +321,7 @@ input.text:focus { border-color: var(--ink); outline: none; }
   .cluetext { font-size: 24px; }
   .brand h1 { font-size: 19px; }
   .lobby { grid-template-columns: 1fr; justify-items: center; }
+  .choices { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) {
   .pawn.drop, .frame, .timer.low, .buzz.go > div { animation: none; }
@@ -968,7 +975,7 @@ input.text:focus { border-color: var(--ink); outline: none; }
      mode 'remote' — the iPad shows the board, players join from phones
      mode 'phones' — no iPad: this phone hosts the room and also plays
      ===================================================================== */
-  let S, sel = null, ui = { menu: false, rules: false, scores: false, confirmNew: false, hint: '', justPlaced: -1, phonesChoice: false, lastNotice: 0 };
+  let S, sel = null, ui = { menu: false, rules: false, scores: false, confirmNew: false, hint: '', justPlaced: -1, phonesChoice: false, lastNotice: 0, home: true, joinErr: '', joinCode: '', joinName: '' };
   let phoneApi = null;
   const fresh = (names) => ({
     mode: 'local', room: '', hostPid: '',
@@ -1300,6 +1307,22 @@ input.text:focus { border-color: var(--ink); outline: none; }
       }
       save(); render();
     },
+    goCreate() { ui.home = false; render(); },
+    goHome() {
+      if (S.mode === 'remote') { stopHost(); S.mode = 'local'; S.players = []; save(); }
+      ui.home = true; ui.phonesChoice = false; ui.hint = ''; render();
+    },
+    joinRoom() {
+      const code = ($('#joincode').value || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4);
+      const name = ($('#joinname').value || '').trim().slice(0, 16);
+      ui.joinCode = code; ui.joinName = name;
+      if (code.length !== 4) { ui.joinErr = 'El código de la sala tiene 4 letras.'; render(); return; }
+      if (!name) { ui.joinErr = 'Escribe tu nombre.'; render(); return; }
+      const saved = lsGet(PHONE_KEY) || {};
+      lsSet(PHONE_KEY, { ...saved, code, name, pid: saved.pid || newPid(), joined: true });
+      const q = testQuery(); q.set('sala', code);
+      location.href = location.pathname + '?' + q.toString();
+    },
     createPhones() {
       const name = ($('#hostname').value || '').trim().slice(0, 16);
       if (!name) { ui.hint = 'Escribe tu nombre para crear la sala.'; render(); return; }
@@ -1477,6 +1500,29 @@ input.text:focus { border-color: var(--ink); outline: none; }
     const g = S.players.length ? giverIdx() : 0;
     switch (S.phase) {
       case 'setup': {
+        if (ui.home && S.mode === 'local' && !ui.phonesChoice) {
+          const savedName = ui.joinName || (lsGet(PHONE_KEY) || {}).name || '';
+          return ['scrim', 'wide', `
+            <h2>Pistas de Color</h2>
+            <p class="lead">Una persona ve un color en secreto y da pistas. Los demás intentan encontrarlo entre 480 casillas.</p>
+            <div class="choices">
+              <div class="choice">
+                <h3>Crear una partida</h3>
+                <p>Elige cómo jugar: todos en un iPad, el iPad como tablero con celulares, o solo con celulares.</p>
+                <button class="primary" data-action="goCreate">Crear partida</button>
+              </div>
+              <div class="choice">
+                <h3>Entrar a una sala</h3>
+                <label class="eyebrow" for="joincode">Código de la sala</label>
+                <input class="text" id="joincode" maxlength="4" autocomplete="off" autocapitalize="characters" placeholder="ABCD" value="${esc(ui.joinCode)}">
+                <label class="eyebrow" for="joinname">Tu nombre</label>
+                <input class="text" id="joinname" maxlength="16" autocomplete="off" placeholder="Por ejemplo: Ana" value="${esc(savedName)}">
+                ${ui.joinErr ? `<p class="net bad">${esc(ui.joinErr)}</p>` : ''}
+                <button class="primary" data-action="joinRoom">Entrar</button>
+              </div>
+            </div>
+            <div class="row end"><button class="linkbtn" data-action="rules">Cómo se juega</button></div>`];
+        }
         const choice = ui.phonesChoice ? 'phones' : S.mode;
         const modeSeg = `<div class="seg" role="group" aria-label="Modo de juego">
             <button data-action="mode" data-v="local" aria-pressed="${choice === 'local'}">Un solo iPad</button>
@@ -1495,7 +1541,7 @@ input.text:focus { border-color: var(--ink); outline: none; }
             <input class="text" id="hostname" maxlength="16" autocomplete="off" placeholder="Por ejemplo: Mamá">
             ${ui.hint ? `<p class="net bad">${esc(ui.hint)}</p>` : ''}
             <p class="sub">Mantén tu pantalla encendida durante la partida: tu celular es la sala.</p>
-            <div class="row end"><button class="linkbtn" data-action="rules">Cómo se juega</button><button class="primary" data-action="createPhones">Crear sala</button></div>`];
+            <div class="row end"><button class="linkbtn back" data-action="goHome">← Volver</button><button class="linkbtn" data-action="rules">Cómo se juega</button><button class="primary" data-action="createPhones">Crear sala</button></div>`];
         }
         if (remote()) {
           const url = joinURL(), n = S.players.length;
@@ -1519,7 +1565,7 @@ input.text:focus { border-color: var(--ink); outline: none; }
               : '<div class="empty">Todavía no ha entrado nadie. Cuando alguien entre, aparecerá aquí.</div>'}
             </div>
             ${settings(n)}
-            <div class="row end"><button class="linkbtn" data-action="rules">Cómo se juega</button><button class="primary" data-action="start" ${n >= 2 ? '' : 'disabled'}>${n >= 2 ? 'Empezar partida' : 'Faltan jugadores'}</button></div>`];
+            <div class="row end"><button class="linkbtn back" data-action="goHome">← Volver</button><button class="linkbtn" data-action="rules">Cómo se juega</button><button class="primary" data-action="start" ${n >= 2 ? '' : 'disabled'}>${n >= 2 ? 'Empezar partida' : 'Faltan jugadores'}</button></div>`];
         }
         const names = S.setup.names;
         return ['scrim', '', `
@@ -1534,7 +1580,7 @@ input.text:focus { border-color: var(--ink); outline: none; }
           </div>
           ${names.length < 10 ? '<div><button class="linkbtn" data-action="addPlayer">+ Añadir jugador</button></div>' : ''}
           ${settings(names.length)}
-          <div class="row end"><button class="linkbtn" data-action="rules">Cómo se juega</button><button class="primary" data-action="start">Empezar partida</button></div>`];
+          <div class="row end"><button class="linkbtn back" data-action="goHome">← Volver</button><button class="linkbtn" data-action="rules">Cómo se juega</button><button class="primary" data-action="start">Empezar partida</button></div>`];
       }
       case 'handoff':
         return ['private', '', `
