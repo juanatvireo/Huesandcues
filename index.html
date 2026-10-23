@@ -1,0 +1,677 @@
+<title>Pistas de Color</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=DM+Mono:wght@500&display=swap">
+<style>
+/* Layout: one-screen game table — score strip on top, the 30×16 colour board as the hero, an action tray below; private moments open as opaque full-screen sheets */
+:root {
+  --bg: #e7e6e2;
+  --surface: #f6f5f2;
+  --ink: #1c1c20;
+  --ink-soft: #3a3a40;
+  --muted: #6c6b72;
+  --line: #d2d0ca;
+  --on-ink: #f6f5f2;
+  --ring-light: #ffffff;
+  --ring-dark: #000000;
+  --scrim: rgba(231, 230, 226, 0.72);
+  --display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --body: "Atkinson Hyperlegible", "Helvetica Neue", system-ui, sans-serif;
+  --mono: "DM Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #18181b; --surface: #232327; --ink: #f1f0ec; --ink-soft: #d6d5d0; --muted: #a2a1a8;
+    --line: #3a3a40; --on-ink: #18181b; --scrim: rgba(24, 24, 27, 0.74); color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #18181b; --surface: #232327; --ink: #f1f0ec; --ink-soft: #d6d5d0; --muted: #a2a1a8;
+  --line: #3a3a40; --on-ink: #18181b; --scrim: rgba(24, 24, 27, 0.74); color-scheme: dark;
+}
+
+html { height: 100%; box-sizing: border-box; }
+*, *::before, *::after { box-sizing: inherit; }
+body {
+  height: 100%; margin: 0; overflow: hidden;
+  background: var(--bg); color: var(--ink);
+  font-family: var(--body); font-size: 16px; line-height: 1.4;
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+input { -webkit-user-select: text; user-select: text; }
+[hidden] { display: none !important; }
+
+#app {
+  height: 100%; display: flex; flex-direction: column; gap: 10px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 10px;
+}
+
+/* ---------- header ---------- */
+header { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand h1 { margin: 0; font: 800 22px/1 var(--display); letter-spacing: -0.02em; }
+.logo { display: grid; grid-template-columns: repeat(2, 9px); gap: 2px; }
+.logo i { width: 9px; height: 9px; border-radius: 2px; display: block; }
+.turninfo { font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.scores { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; align-items: center; }
+.chip {
+  display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px 4px 4px;
+  border-radius: 999px; background: var(--surface); border: 1.5px solid transparent;
+  font-size: 14px; white-space: nowrap;
+}
+.chip b { font-variant-numeric: tabular-nums; font-weight: 700; }
+.chip.now { border-color: var(--ink); }
+.chip .tag { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.dot {
+  --pc: #888; width: 24px; height: 24px; border-radius: 50%; flex: none;
+  background: var(--pc); color: #fff; display: grid; place-items: center;
+  font: 800 12px/1 var(--display); text-shadow: 0 1px 1px rgba(0,0,0,.4);
+  box-shadow: inset 0 0 0 2px rgba(255,255,255,.85);
+}
+.iconbtn {
+  font: 700 14px/1 var(--body); color: var(--ink); background: var(--surface);
+  border: 0; border-radius: 999px; padding: 9px 14px; cursor: pointer;
+}
+
+/* ---------- board ---------- */
+#stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+#board {
+  --cell: 24px; --gap: 2px;
+  display: grid; gap: var(--gap);
+  grid-template-columns: calc(var(--cell) * 0.9) repeat(30, var(--cell));
+  grid-template-rows: calc(var(--cell) * 0.8) repeat(16, var(--cell));
+}
+.lbl {
+  display: grid; place-items: center; color: var(--muted);
+  font: 500 max(9px, calc(var(--cell) * 0.36)) / 1 var(--mono);
+}
+.cell {
+  position: relative; border-radius: calc(var(--cell) * 0.14); cursor: pointer;
+}
+.cell.sel { z-index: 4; box-shadow: 0 0 0 2px var(--ring-light), 0 0 0 4px var(--ring-dark); }
+.cell.dim { filter: saturate(0.6); opacity: 0.6; }
+.pawn {
+  --pc: #888; position: absolute; inset: 11%; border-radius: 50%; z-index: 2;
+  background: var(--pc); color: #fff; display: grid; place-items: center;
+  font: 800 max(8px, calc(var(--cell) * 0.38)) / 1 var(--display);
+  text-shadow: 0 1px 1px rgba(0,0,0,.45);
+  box-shadow: inset 0 0 0 max(1.5px, calc(var(--cell) * 0.07)) var(--ring-light), 0 0 0 1px rgba(0,0,0,.6), 0 2px 5px rgba(0,0,0,.35);
+  pointer-events: none;
+}
+.pawn.ghost { opacity: 0.7; }
+.pawn.drop { animation: drop .28s cubic-bezier(.3,1.6,.5,1); }
+@keyframes drop { from { transform: translateY(-40%) scale(1.3); opacity: 0; } }
+.pts {
+  position: absolute; z-index: 6; right: -18%; top: -22%; pointer-events: none;
+  background: var(--ring-dark); color: var(--ring-light); border-radius: 999px;
+  font: 500 max(9px, calc(var(--cell) * 0.34)) / 1 var(--mono); padding: 2px 4px;
+}
+.frame {
+  z-index: 5; pointer-events: none; border-radius: calc(var(--cell) * 0.2);
+  margin: calc(var(--gap) * -1 - 2px);
+  border: max(2px, calc(var(--cell) * 0.1)) solid var(--ring-light);
+  box-shadow: 0 0 0 2px var(--ring-dark), inset 0 0 0 2px var(--ring-dark);
+  animation: frame .45s cubic-bezier(.2,1.4,.4,1);
+}
+.frame.outer {
+  z-index: 3; border-style: dashed; border-width: 2px; box-shadow: none;
+  border-color: var(--ring-dark); outline: 2px dashed var(--ring-light); outline-offset: -4px;
+  animation-delay: .1s; animation-fill-mode: backwards;
+}
+.target-mark {
+  position: absolute; inset: 22%; z-index: 6; border-radius: 50%; pointer-events: none;
+  box-shadow: 0 0 0 3px var(--ring-light), 0 0 0 5px var(--ring-dark);
+}
+@keyframes frame { from { transform: scale(1.35); opacity: 0; } }
+
+/* ---------- tray ---------- */
+#tray {
+  flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px;
+  background: var(--surface); border-radius: 18px; padding: 12px 16px; min-height: 84px;
+}
+.eyebrow { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.who { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.who .dot { width: 46px; height: 46px; font-size: 22px; box-shadow: inset 0 0 0 3px rgba(255,255,255,.85), 0 2px 6px rgba(0,0,0,.25); }
+.big { font: 800 24px/1.1 var(--display); letter-spacing: -0.01em; }
+.sub { font-size: 14px; color: var(--muted); }
+.clue { min-width: 0; flex: 1 1 200px; }
+.cluetext { font: 800 30px/1.1 var(--display); letter-spacing: -0.015em; overflow-wrap: anywhere; }
+.cluetext.quiet { font: 400 17px/1.3 var(--body); color: var(--muted); }
+.cluetext small { display: block; font: 400 15px/1.3 var(--body); color: var(--muted); }
+.preview { display: flex; align-items: center; gap: 10px; }
+.swatch { width: 52px; height: 52px; border-radius: 10px; flex: none; background: var(--line); }
+.coord { font: 500 22px/1 var(--mono); font-variant-numeric: tabular-nums; }
+.btns { display: flex; gap: 10px; margin-left: auto; flex-wrap: wrap; }
+.hint { font-size: 14px; color: var(--muted); }
+.hint.warn { color: var(--ink); font-weight: 700; }
+
+button.primary, button.ghost {
+  font: 700 17px/1 var(--body); border-radius: 14px; padding: 15px 22px; cursor: pointer;
+  border: 2px solid var(--ink); min-height: 52px;
+}
+button.primary { background: var(--ink); color: var(--on-ink); }
+button.ghost { background: transparent; color: var(--ink); }
+button:disabled { opacity: 0.35; cursor: default; }
+button:focus-visible, input:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+
+.results { display: flex; flex-wrap: wrap; gap: 8px 18px; flex: 1 1 300px; min-width: 0; }
+.res { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+.res b { font: 700 18px/1 var(--body); font-variant-numeric: tabular-nums; }
+
+.peek {
+  position: relative; width: 150px; height: 56px; border-radius: 12px; border: 2px dashed var(--muted);
+  display: grid; place-items: center; text-align: center; font-size: 12px; line-height: 1.2; color: var(--muted);
+  padding: 4px 8px; cursor: pointer; touch-action: none;
+}
+.peek.on { border: 2px solid var(--ink); color: transparent; background: var(--peek); }
+
+input.text {
+  font: 700 20px/1.2 var(--body); color: var(--ink); background: var(--bg);
+  border: 2px solid var(--line); border-radius: 12px; padding: 12px 14px; width: 100%; min-width: 0;
+}
+input.text:focus { border-color: var(--ink); outline: none; }
+
+/* ---------- sheets ---------- */
+.sheet {
+  position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  overflow-y: auto;
+}
+.sheet.scrim { background: var(--scrim); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.sheet.private { background: var(--bg); }
+.card {
+  width: 100%; max-width: 580px; max-height: 100%; overflow-y: auto; margin: auto;
+  background: var(--surface); border-radius: 24px; padding: 28px;
+  display: flex; flex-direction: column; gap: 18px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.18);
+}
+.card h2 { margin: 0; font: 800 34px/1.05 var(--display); letter-spacing: -0.025em; text-wrap: balance; }
+.card h3 { margin: 0; font: 800 18px/1.2 var(--display); }
+.card p { margin: 0; color: var(--ink-soft); max-width: 60ch; }
+.lead { font-size: 18px; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.row.end { justify-content: flex-end; }
+.players { display: flex; flex-direction: column; gap: 8px; }
+.prow { display: flex; gap: 10px; align-items: center; }
+.prow .dot { width: 34px; height: 34px; font-size: 15px; }
+.prow input { flex: 1; font-size: 18px; padding: 10px 12px; }
+.x { width: 44px; height: 44px; border-radius: 12px; border: 0; background: transparent; color: var(--muted); font-size: 24px; cursor: pointer; }
+.seg { display: inline-flex; background: var(--bg); border-radius: 12px; padding: 4px; gap: 4px; }
+.seg button { border: 0; background: transparent; color: var(--ink); font: 700 17px/1 var(--body); border-radius: 9px; padding: 11px 18px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--on-ink); }
+.linkbtn { border: 0; background: none; color: var(--ink); font: 700 16px/1 var(--body); text-decoration: underline; text-underline-offset: 3px; padding: 10px 4px; cursor: pointer; }
+
+.cardpick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.opt {
+  border: 0; border-radius: 16px; padding: 0; cursor: pointer; background: none; color: var(--ink);
+  display: flex; flex-direction: column; gap: 8px; align-items: stretch; font: 500 16px/1 var(--mono);
+}
+.opt span.fill { aspect-ratio: 1; max-width: 100%; border-radius: 14px; display: block; box-shadow: inset 0 0 0 1px rgba(0,0,0,.08); }
+.opt[aria-pressed="true"] span.fill { box-shadow: 0 0 0 3px var(--surface), 0 0 0 6px var(--ink); }
+.opt[aria-pressed="true"] { font-weight: 700; }
+.rules { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 10px; color: var(--ink-soft); }
+.rules b { color: var(--ink); }
+.scoring { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; align-items: center; font-size: 15px; }
+.scoring .n { font: 800 20px/1 var(--display); }
+.rank { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.rank li { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 14px; background: var(--bg); }
+.rank li .dot { width: 36px; height: 36px; font-size: 16px; }
+.rank li .nm { flex: 1; font-size: 18px; }
+.rank li b { font: 800 24px/1 var(--display); font-variant-numeric: tabular-nums; }
+.rank li.first { background: var(--ink); color: var(--on-ink); }
+.place { font: 500 15px/1 var(--mono); width: 22px; color: inherit; opacity: .7; }
+
+@media (max-width: 560px) {
+  .cardpick { grid-template-columns: repeat(2, 1fr); }
+  .card { padding: 20px; }
+  .card h2 { font-size: 28px; }
+  .cluetext { font-size: 24px; }
+  .brand h1 { font-size: 19px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pawn.drop, .frame { animation: none; }
+}
+</style>
+
+<div id="app">
+  <header>
+    <div class="brand">
+      <div class="logo" aria-hidden="true"><i style="background:#e0533d"></i><i style="background:#e8b52c"></i><i style="background:#2f8f6a"></i><i style="background:#3b5bd6"></i></div>
+      <h1>Pistas de Color</h1>
+    </div>
+    <span class="turninfo" id="turninfo"></span>
+    <div class="scores" id="scores"></div>
+    <button class="iconbtn" data-action="menu" id="menuBtn">Menú</button>
+  </header>
+  <main id="stage"><div id="board" aria-label="Tablero de colores"></div></main>
+  <section id="tray" aria-live="polite"></section>
+</div>
+<div id="sheet" class="sheet" hidden></div>
+
+<script>
+(() => {
+  const COLS = 30, ROWS = 16, LETTERS = 'ABCDEFGHIJKLMNOP';
+  const KEY = 'pistas-de-color-v1';
+  const PCOLORS = ['#d7263d', '#1f4fd1', '#178a4c', '#7b3fe4', '#e46a12', '#0b7c86', '#d6338a', '#7a5523', '#36404f', '#b8860b'];
+
+  /* ---------- colour board (OKLCH → sRGB, gamut-clipped) ---------- */
+  function oklchToRgb(L, C, hDeg) {
+    const h = hDeg * Math.PI / 180, a = C * Math.cos(h), b = C * Math.sin(h);
+    const l_ = L + 0.3963377774 * a + 0.2158037573 * b;
+    const m_ = L - 0.1055613458 * a - 0.0638541728 * b;
+    const s_ = L - 0.0894841775 * a - 1.2914855480 * b;
+    const l = l_ ** 3, m = m_ ** 3, s = s_ ** 3;
+    return [
+      4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+      -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+      -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s,
+    ];
+  }
+  const inGamut = rgb => rgb.every(v => v >= -0.0005 && v <= 1.0005);
+  const enc = v => {
+    v = Math.min(1, Math.max(0, v));
+    v = v <= 0.0031308 ? 12.92 * v : 1.055 * Math.pow(v, 1 / 2.4) - 0.055;
+    return Math.round(v * 255).toString(16).padStart(2, '0');
+  };
+  function cellHex(r, c) {
+    const t = r / (ROWS - 1);
+    const L = 0.93 - 0.63 * t;
+    const h = (24 + c * 12) % 360;
+    let C = 0.05 + 0.17 * Math.sin(Math.PI * (0.1 + t * 0.75));
+    if (!inGamut(oklchToRgb(L, C, h))) {
+      let lo = 0, hi = C;
+      for (let i = 0; i < 16; i++) { const mid = (lo + hi) / 2; inGamut(oklchToRgb(L, mid, h)) ? lo = mid : hi = mid; }
+      C = lo;
+    }
+    const rgb = oklchToRgb(L, C, h);
+    return '#' + rgb.map(enc).join('');
+  }
+  const COLORS = Array.from({ length: ROWS }, (_, r) => Array.from({ length: COLS }, (_, c) => cellHex(r, c)));
+  const coord = p => LETTERS[p.r] + (p.c + 1);
+
+  /* ---------- helpers ---------- */
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+  const rand = n => Math.floor(Math.random() * n);
+  const initial = name => (name.trim()[0] || '?').toUpperCase();
+  const dot = (i, extra = '') => `<span class="dot ${extra}" style="--pc:${S.players[i] ? S.players[i].color : PCOLORS[i]}">${esc(initial(S.players[i] ? S.players[i].name : ''))}</span>`;
+  const pname = i => esc(S.players[i].name);
+
+  /* ---------- state ---------- */
+  let S, sel = null, ui = { menu: false, rules: false, confirmNew: false, hint: '', justPlaced: -1 };
+  const fresh = (names) => ({
+    phase: 'setup',
+    setup: { names: names || ['', '', '', ''], rounds: 2 },
+    players: [], rounds: 2, turn: 0, card: [], target: null,
+    clue1: '', clue2: '', step: 1, order: [], gi: 0, markers: [], result: null,
+  });
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
+  function load() { try { const v = JSON.parse(localStorage.getItem(KEY)); return v && v.phase ? v : null; } catch (e) { return null; } }
+
+  const giverIdx = () => S.turn % S.players.length;
+  const totalTurns = () => S.players.length * S.rounds;
+  const guesser = () => S.order[S.gi];
+  const occupied = (r, c) => S.markers.some(m => m.r === r && m.c === c);
+
+  function startGame() {
+    S.players = S.setup.names.map((n, i) => ({ name: n.trim() || `Jugador ${i + 1}`, color: PCOLORS[i], score: 0 }));
+    S.rounds = S.setup.rounds; S.turn = 0;
+    beginTurn(); keepAwake();
+  }
+  function beginTurn() {
+    S.card = drawCard(); S.target = null; S.clue1 = ''; S.clue2 = ''; S.step = 1; S.markers = []; S.result = null;
+    const n = S.players.length, g = giverIdx();
+    S.order = []; for (let k = 1; k < n; k++) S.order.push((g + k) % n);
+    S.gi = 0; S.phase = 'handoff'; sel = null; ui.hint = '';
+  }
+  function drawCard() {
+    const out = [];
+    while (out.length < 4) {
+      const r = rand(ROWS), c = rand(COLS);
+      if (out.some(o => Math.max(Math.abs(o.r - r), Math.abs(o.c - c)) < 3)) continue;
+      out.push({ r, c });
+    }
+    return out;
+  }
+  function reveal() {
+    const t = S.target, g = giverIdx(), pts = S.players.map(() => 0);
+    let inFrame = 0;
+    S.markers.forEach(m => {
+      const d = Math.max(Math.abs(m.r - t.r), Math.abs(m.c - t.c));
+      m.pts = d === 0 ? 3 : d === 1 ? 2 : d === 2 ? 1 : 0;
+      pts[m.p] += m.pts;
+      if (d <= 1) inFrame++;
+    });
+    pts[g] = inFrame;
+    S.players.forEach((p, i) => p.score += pts[i]);
+    S.result = { pts }; S.phase = 'reveal';
+  }
+
+  /* ---------- actions ---------- */
+  const actions = {
+    menu() { ui.menu = true; ui.confirmNew = false; render(); },
+    closeMenu() { ui.menu = false; ui.rules = false; render(); },
+    rules() { ui.rules = true; render(); },
+    closeRules() { ui.rules = false; render(); },
+    newGame() {
+      if (!ui.confirmNew) { ui.confirmNew = true; render(); return; }
+      const names = S.players.length ? S.players.map(p => p.name) : S.setup.names;
+      S = fresh(names); ui.menu = false; ui.confirmNew = false; sel = null; save(); render();
+    },
+    addPlayer() { if (S.setup.names.length < 10) { S.setup.names.push(''); save(); render(); focusLast(); } },
+    removePlayer(el) { if (S.setup.names.length > 2) { S.setup.names.splice(+el.dataset.i, 1); save(); render(); } },
+    rounds(el) { S.setup.rounds = +el.dataset.v; save(); render(); },
+    start() { startGame(); save(); render(); },
+    showCard() { S.phase = 'pick'; save(); render(); },
+    pickCard(el) { S.target = { ...S.card[+el.dataset.i] }; save(); render(); },
+    redraw() { S.card = drawCard(); S.target = null; save(); render(); },
+    hideCard() { if (!S.target) return; S.phase = 'guess'; S.step = 1; S.gi = 0; save(); render(); },
+    place() {
+      if (!sel) return;
+      S.markers.push({ p: guesser(), r: sel.r, c: sel.c, step: S.step });
+      ui.justPlaced = S.markers.length - 1; sel = null; ui.hint = ''; S.gi++;
+      if (S.gi >= S.order.length) S.phase = S.step === 1 ? 'clue2' : 'ready';
+      save(); render();
+    },
+    undo() {
+      if (!S.markers.length) return;
+      const last = S.markers[S.markers.length - 1];
+      if (last.step !== S.step && S.phase !== 'clue2') return;
+      S.markers.pop(); sel = null; ui.hint = '';
+      if (S.phase === 'clue2') { S.phase = 'guess'; S.gi = S.order.length - 1; }
+      else if (S.phase === 'ready') { S.phase = 'guess'; S.gi = S.order.length - 1; }
+      else S.gi--;
+      save(); render();
+    },
+    round2() { S.step = 2; S.order.reverse(); S.gi = 0; S.phase = 'guess'; sel = null; save(); render(); },
+    reveal() { reveal(); save(); render(); },
+    next() { S.turn++; if (S.turn >= totalTurns()) S.phase = 'end'; else beginTurn(); save(); render(); },
+    rematch() {
+      const names = S.players.map(p => p.name), rounds = S.rounds;
+      S = fresh(names); S.setup.rounds = rounds; startGame(); save(); render();
+    },
+    toSetup() { const names = S.players.map(p => p.name); S = fresh(names); save(); render(); },
+  };
+  function focusLast() { const ins = document.querySelectorAll('.prow input'); if (ins.length) ins[ins.length - 1].focus(); }
+
+  document.addEventListener('click', e => {
+    const el = e.target.closest('[data-action]');
+    if (el && !el.disabled && actions[el.dataset.action]) actions[el.dataset.action](el);
+  });
+  document.addEventListener('input', e => {
+    const t = e.target;
+    if (t.matches('.prow input')) { S.setup.names[+t.dataset.i] = t.value; refreshSetupDots(); save(); }
+    if (t.id === 'clue1in') { S.clue1 = t.value; save(); }
+    if (t.id === 'clue2in') { S.clue2 = t.value; save(); }
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && e.target.matches('input.text')) e.target.blur();
+  });
+  document.addEventListener('contextmenu', e => { if (!e.target.matches('input')) e.preventDefault(); });
+
+  // hold-to-peek for the cue giver
+  document.addEventListener('pointerdown', e => { const p = e.target.closest('.peek'); if (p) { p.classList.add('on'); try { p.setPointerCapture(e.pointerId); } catch (_) {} } });
+  const unpeek = () => document.querySelectorAll('.peek.on').forEach(p => p.classList.remove('on'));
+  ['pointerup', 'pointercancel'].forEach(ev => document.addEventListener(ev, unpeek));
+
+  /* ---------- board ---------- */
+  const board = $('#board');
+  const cells = [];
+  function buildBoard() {
+    const frag = document.createDocumentFragment();
+    const corner = document.createElement('div'); corner.style.cssText = 'grid-row:1;grid-column:1'; frag.appendChild(corner);
+    for (let c = 0; c < COLS; c++) {
+      const l = document.createElement('div'); l.className = 'lbl'; l.textContent = c + 1;
+      l.style.gridRow = 1; l.style.gridColumn = c + 2; frag.appendChild(l);
+    }
+    for (let r = 0; r < ROWS; r++) {
+      const l = document.createElement('div'); l.className = 'lbl'; l.textContent = LETTERS[r];
+      l.style.gridRow = r + 2; l.style.gridColumn = 1; frag.appendChild(l);
+      cells[r] = [];
+      for (let c = 0; c < COLS; c++) {
+        const d = document.createElement('div');
+        d.className = 'cell'; d.style.background = COLORS[r][c];
+        d.style.gridRow = r + 2; d.style.gridColumn = c + 2;
+        d.dataset.r = r; d.dataset.c = c;
+        cells[r][c] = d; frag.appendChild(d);
+      }
+    }
+    board.appendChild(frag);
+  }
+  board.addEventListener('click', e => {
+    const d = e.target.closest('.cell'); if (!d || S.phase !== 'guess') return;
+    const r = +d.dataset.r, c = +d.dataset.c;
+    if (occupied(r, c)) { ui.hint = 'Esa casilla ya tiene una ficha. Elige otra.'; sel = null; }
+    else { sel = (sel && sel.r === r && sel.c === c) ? null : { r, c }; ui.hint = ''; }
+    renderBoard(); renderTray();
+  });
+
+  function fit() {
+    const st = $('#stage'), W = st.clientWidth, H = st.clientHeight;
+    const cell = Math.max(8, Math.floor(Math.min(W / 33, H / 17.95)));
+    board.style.setProperty('--cell', cell + 'px');
+    board.style.setProperty('--gap', Math.max(1, Math.round(cell * 0.07)) + 'px');
+  }
+  new ResizeObserver(fit).observe($('#stage'));
+
+  function frameEl(t, radius, cls) {
+    const f = document.createElement('div'); f.className = 'frame ' + cls;
+    const r0 = Math.max(0, t.r - radius), r1 = Math.min(ROWS - 1, t.r + radius);
+    const c0 = Math.max(0, t.c - radius), c1 = Math.min(COLS - 1, t.c + radius);
+    f.style.gridRow = `${r0 + 2} / ${r1 + 3}`; f.style.gridColumn = `${c0 + 2} / ${c1 + 3}`;
+    return f;
+  }
+
+  function renderBoard() {
+    board.querySelectorAll('.pawn,.frame,.target-mark,.pts').forEach(n => n.remove());
+    board.querySelectorAll('.cell.sel,.cell.dim').forEach(n => n.classList.remove('sel', 'dim'));
+    if (!S.players.length) return;
+    S.markers.forEach((m, i) => {
+      const p = document.createElement('span');
+      p.className = 'pawn' + (i === ui.justPlaced ? ' drop' : '');
+      p.style.setProperty('--pc', S.players[m.p].color);
+      p.textContent = initial(S.players[m.p].name);
+      cells[m.r][m.c].appendChild(p);
+      if (S.phase === 'reveal') {
+        const b = document.createElement('span'); b.className = 'pts'; b.textContent = '+' + m.pts;
+        cells[m.r][m.c].appendChild(b);
+      }
+    });
+    ui.justPlaced = -1;
+    if (sel && S.phase === 'guess') {
+      const d = cells[sel.r][sel.c]; d.classList.add('sel');
+      const g = document.createElement('span'); g.className = 'pawn ghost';
+      g.style.setProperty('--pc', S.players[guesser()].color); g.textContent = initial(S.players[guesser()].name);
+      d.appendChild(g);
+    }
+    if (S.phase === 'reveal' && S.target) {
+      board.appendChild(frameEl(S.target, 2, 'outer'));
+      board.appendChild(frameEl(S.target, 1, ''));
+      const tm = document.createElement('span'); tm.className = 'target-mark';
+      cells[S.target.r][S.target.c].appendChild(tm);
+      for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++)
+        if (Math.max(Math.abs(r - S.target.r), Math.abs(c - S.target.c)) > 2) cells[r][c].classList.add('dim');
+    }
+  }
+
+  /* ---------- header ---------- */
+  function renderHeader() {
+    const playing = S.players.length && S.phase !== 'setup';
+    $('#turninfo').textContent = playing && S.phase !== 'end'
+      ? `Turno ${S.turn + 1} de ${totalTurns()} · Vuelta ${Math.floor(S.turn / S.players.length) + 1} de ${S.rounds}` : '';
+    $('#scores').innerHTML = !playing ? '' : S.players.map((p, i) => {
+      const isG = i === giverIdx() && S.phase !== 'end';
+      const isNow = S.phase === 'guess' && i === guesser();
+      return `<span class="chip${isNow ? ' now' : ''}">${dot(i)}${esc(p.name)}${isG ? ' <span class="tag">pista</span>' : ''} <b>${p.score}</b></span>`;
+    }).join('');
+    $('#menuBtn').hidden = S.phase === 'setup';
+  }
+
+  /* ---------- tray ---------- */
+  function clueBlock() {
+    const g = giverIdx();
+    if (S.step === 1) {
+      return S.clue1.trim()
+        ? `<div class="eyebrow">Pista de ${pname(g)}</div><div class="cluetext">«${esc(S.clue1.trim())}»</div>`
+        : `<div class="eyebrow">Pista de ${pname(g)}</div><div class="cluetext quiet">Escucha la pista de una palabra.</div>`;
+    }
+    const first = S.clue1.trim() ? `Primera: «${esc(S.clue1.trim())}»` : '';
+    return S.clue2.trim()
+      ? `<div class="eyebrow">Segunda pista de ${pname(g)}</div><div class="cluetext">«${esc(S.clue2.trim())}»<small>${first}</small></div>`
+      : `<div class="eyebrow">Segunda pista de ${pname(g)}</div><div class="cluetext quiet">Escucha la pista de dos palabras.${first ? '<br>' + first : ''}</div>`;
+  }
+
+  function renderTray() {
+    const tray = $('#tray'), g = S.players.length ? giverIdx() : 0;
+    tray.hidden = ['setup', 'end', 'handoff', 'pick'].includes(S.phase);
+    if (tray.hidden) { tray.innerHTML = ''; return; }
+    if (S.phase === 'guess') {
+      const p = guesser();
+      const canUndo = S.gi > 0;
+      tray.innerHTML = `
+        <div class="who">${dot(p)}<div><div class="eyebrow">Te toca</div><div class="big">${pname(p)}</div><div class="sub">Ficha ${S.step} de 2 · ${S.gi + 1}/${S.order.length}</div></div></div>
+        <div class="clue">${clueBlock()}</div>
+        <div class="preview">${sel
+          ? `<span class="swatch" style="background:${COLORS[sel.r][sel.c]}"></span><span class="coord">${coord(sel)}</span>`
+          : `<span class="hint ${ui.hint ? 'warn' : ''}">${ui.hint || 'Toca una casilla del tablero.'}</span>`}</div>
+        <div class="btns">
+          <button class="ghost" data-action="undo" ${canUndo ? '' : 'disabled'}>Deshacer</button>
+          <button class="primary" data-action="place" ${sel ? '' : 'disabled'}>Colocar ficha</button>
+        </div>`;
+    } else if (S.phase === 'clue2') {
+      tray.innerHTML = `
+        <div class="who">${dot(g)}<div><div class="eyebrow">Segunda pista</div><div class="big">${pname(g)}</div><div class="sub">Mira las fichas y da una pista de hasta dos palabras.</div></div></div>
+        <div class="peek" style="--peek:${COLORS[S.target.r][S.target.c]}">Mantén pulsado para ver tu color</div>
+        <div class="clue"><input class="text" id="clue2in" maxlength="40" autocomplete="off" placeholder="Escríbela aquí (opcional)" value="${esc(S.clue2)}"></div>
+        <div class="btns">
+          <button class="ghost" data-action="undo">Deshacer</button>
+          <button class="primary" data-action="round2">Empezar segunda ronda</button>
+        </div>`;
+    } else if (S.phase === 'ready') {
+      tray.innerHTML = `
+        <div class="who">${dot(g)}<div><div class="eyebrow">Todas las fichas están puestas</div><div class="big">${pname(g)}, revela tu color</div></div></div>
+        <div class="btns">
+          <button class="ghost" data-action="undo">Deshacer</button>
+          <button class="primary" data-action="reveal">Revelar</button>
+        </div>`;
+    } else if (S.phase === 'reveal') {
+      const last = S.turn + 1 >= totalTurns();
+      const order = [g, ...S.order.slice().sort((a, b) => a - b)];
+      tray.innerHTML = `
+        <div class="preview"><span class="swatch" style="background:${COLORS[S.target.r][S.target.c]}"></span><div><div class="eyebrow">Era</div><span class="coord">${coord(S.target)}</span></div></div>
+        <div class="results">${order.map(i => `<span class="res">${dot(i)}${pname(i)} <b>+${S.result.pts[i]}</b></span>`).join('')}</div>
+        <div class="btns"><button class="primary" data-action="next">${last ? 'Ver resultado final' : 'Siguiente turno'}</button></div>`;
+    }
+  }
+
+  /* ---------- sheets ---------- */
+  const RULES = `
+    <ol class="rules">
+      <li>En cada turno una persona <b>da las pistas</b>. Le pasan el iPad, ve una tarjeta con 4 colores y elige uno en secreto.</li>
+      <li>Dice en voz alta una pista de <b>una palabra</b>. No vale nombrar colores ni decir filas, números o posiciones del tablero.</li>
+      <li>Por turnos, cada jugador toca la casilla que cree que es y coloca su ficha. Dos fichas no pueden ir en la misma casilla.</li>
+      <li>Luego da una segunda pista de <b>hasta dos palabras</b> y todos colocan una segunda ficha, en orden inverso.</li>
+      <li>Se revela el color con un marco de 3×3 a su alrededor.</li>
+    </ol>
+    <div class="scoring">
+      <span class="n">3</span><span>en la casilla exacta</span>
+      <span class="n">2</span><span>dentro del marco</span>
+      <span class="n">1</span><span>en el anillo que rodea al marco (línea punteada)</span>
+      <span class="n">+1</span><span>para quien da la pista por cada ficha dentro del marco</span>
+    </div>
+    <p>La partida termina cuando todos han dado pistas el número de vueltas elegido. Gana quien tenga más puntos.</p>`;
+
+  function refreshSetupDots() {
+    document.querySelectorAll('.prow').forEach((row, i) => {
+      const d = row.querySelector('.dot'); if (d) d.textContent = initial(S.setup.names[i] || `J${i + 1}`);
+    });
+  }
+
+  function sheetHTML() {
+    if (ui.rules) return ['scrim', `<h2>Cómo se juega</h2>${RULES}<div class="row end"><button class="primary" data-action="closeRules">Entendido</button></div>`];
+    if (ui.menu) return ['scrim', `
+      <h2>Menú</h2>
+      <div class="row"><button class="primary" data-action="closeMenu">Seguir jugando</button><button class="ghost" data-action="rules">Cómo se juega</button></div>
+      <div class="row"><button class="ghost" data-action="newGame">${ui.confirmNew ? 'Toca otra vez para borrar esta partida' : 'Nueva partida'}</button></div>
+      <p class="sub">La partida se guarda sola en este iPad. Si cierras la página, la encontrarás donde la dejaste.</p>`];
+    const g = S.players.length ? giverIdx() : 0;
+    switch (S.phase) {
+      case 'setup': {
+        const n = S.setup.names;
+        return ['scrim', `
+          <h2>Pistas de Color</h2>
+          <p class="lead">Una persona ve un color en secreto y da pistas. Los demás intentan encontrarlo entre 480 casillas. Se juega pasándose el iPad.</p>
+          <h3>Jugadores</h3>
+          <div class="players">${n.map((name, i) => `
+            <div class="prow"><span class="dot" style="--pc:${PCOLORS[i]}">${esc(initial(name || 'J' + (i + 1)))}</span>
+              <input class="text" id="p${i}" data-i="${i}" maxlength="16" autocomplete="off" placeholder="Jugador ${i + 1}" value="${esc(name)}">
+              <button class="x" data-action="removePlayer" data-i="${i}" aria-label="Quitar jugador" ${n.length <= 2 ? 'disabled' : ''}>×</button></div>`).join('')}
+          </div>
+          ${n.length < 10 ? '<div><button class="linkbtn" data-action="addPlayer">+ Añadir jugador</button></div>' : ''}
+          <h3>¿Cuántas veces da pistas cada persona?</h3>
+          <div><div class="seg" role="group">${[1, 2, 3].map(v => `<button data-action="rounds" data-v="${v}" aria-pressed="${S.setup.rounds === v}">${v}</button>`).join('')}</div>
+          <span class="sub">&nbsp; ${n.length * S.setup.rounds} turnos en total</span></div>
+          <div class="row end"><button class="linkbtn" data-action="rules">Cómo se juega</button><button class="primary" data-action="start">Empezar partida</button></div>`];
+      }
+      case 'handoff':
+        return ['private', `
+          <div class="eyebrow">Turno ${S.turn + 1} de ${totalTurns()}</div>
+          <div class="who">${dot(g)}<h2>Le toca dar la pista a ${pname(g)}</h2></div>
+          <p class="lead">Pásale el iPad a ${pname(g)}. Los demás, no miren la pantalla hasta que diga la pista.</p>
+          <div class="row end"><button class="primary" data-action="showCard">Soy ${pname(g)}: ver mi tarjeta</button></div>`];
+      case 'pick':
+        return ['private', `
+          <h2>Elige tu color secreto</h2>
+          <p>Toca uno de los cuatro. Luego piensa una pista de una palabra, sin nombrar colores.</p>
+          <div class="cardpick">${S.card.map((p, i) => {
+            const on = S.target && S.target.r === p.r && S.target.c === p.c;
+            return `<button class="opt" data-action="pickCard" data-i="${i}" aria-pressed="${on}"><span class="fill" style="background:${COLORS[p.r][p.c]}"></span>${coord(p)}</button>`;
+          }).join('')}</div>
+          <div><button class="linkbtn" data-action="redraw">Sacar otra tarjeta</button></div>
+          <label for="clue1in" class="eyebrow">Tu pista (opcional: se mostrará a todos)</label>
+          <input class="text" id="clue1in" maxlength="30" autocomplete="off" placeholder="Por ejemplo: aguacate" value="${esc(S.clue1)}">
+          <div class="row end"><button class="primary" data-action="hideCard" ${S.target ? '' : 'disabled'}>Listo: ocultar y empezar</button></div>`];
+      case 'end': {
+        const ranked = S.players.map((p, i) => ({ ...p, i })).sort((a, b) => b.score - a.score);
+        const top = ranked[0].score, winners = ranked.filter(p => p.score === top);
+        const title = winners.length > 1 ? `¡Empate entre ${winners.slice(0, -1).map(w => esc(w.name)).join(', ')} y ${esc(winners[winners.length - 1].name)}!` : `¡Gana ${esc(winners[0].name)}!`;
+        return ['scrim', `
+          <div class="eyebrow">Fin de la partida</div>
+          <h2>${title}</h2>
+          <ol class="rank">${ranked.map((p, k) => `<li class="${p.score === top ? 'first' : ''}"><span class="place">${ranked.findIndex(q => q.score === p.score) + 1}</span>${dot(p.i)}<span class="nm">${esc(p.name)}</span><b>${p.score}</b></li>`).join('')}</ol>
+          <div class="row end"><button class="ghost" data-action="toSetup">Cambiar jugadores</button><button class="primary" data-action="rematch">Jugar otra vez</button></div>`];
+      }
+    }
+    return null;
+  }
+
+  function renderSheet() {
+    const sh = $('#sheet'), res = sheetHTML();
+    if (!res) { sh.hidden = true; sh.innerHTML = ''; return; }
+    sh.className = 'sheet ' + res[0];
+    sh.innerHTML = `<div class="card" role="dialog" aria-modal="true">${res[1]}</div>`;
+    sh.hidden = false;
+  }
+
+  function render() { renderHeader(); renderBoard(); renderTray(); renderSheet(); }
+
+  /* ---------- keep the screen on while playing ---------- */
+  let lock = null;
+  async function keepAwake() { try { if ('wakeLock' in navigator && !lock) { lock = await navigator.wakeLock.request('screen'); lock.addEventListener('release', () => { lock = null; }); } } catch (e) {} }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S && S.phase !== 'setup') keepAwake(); });
+
+  /* ---------- boot ---------- */
+  function start(data) {
+    S = (data && data.state) || load() || fresh();
+    buildBoard(); fit(); render();
+    if (S.phase !== 'setup') keepAwake();
+  }
+  window.claude?.hot?.snapshot?.(() => ({ state: S }));
+  window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
+})();
+</script>
