@@ -1,11 +1,17 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Pistas de Color</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#e7e6e2">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=DM+Mono:wght@500&display=swap">
 <style>
-/* Layout: one-screen game table — score strip on top, the 30×16 colour board as the hero, an action tray below; private moments open as opaque full-screen sheets */
+/* Layout: one-screen game table — score strip on top, the 30×16 colour board as the hero, an action tray below; private moments open as opaque full-screen sheets. Phones get their own controller screen. */
 :root {
   --bg: #e7e6e2;
   --surface: #f6f5f2;
@@ -17,6 +23,8 @@
   --ring-light: #ffffff;
   --ring-dark: #000000;
   --scrim: rgba(231, 230, 226, 0.72);
+  --ok: #178a4c;
+  --warn: #c2410c;
   --display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
   --body: "Atkinson Hyperlegible", "Helvetica Neue", system-ui, sans-serif;
   --mono: "DM Mono", ui-monospace, "SF Mono", Menlo, monospace;
@@ -24,14 +32,15 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #18181b; --surface: #232327; --ink: #f1f0ec; --ink-soft: #d6d5d0; --muted: #a2a1a8;
-    --line: #3a3a40; --on-ink: #18181b; --scrim: rgba(24, 24, 27, 0.74); color-scheme: dark;
+    --line: #3a3a40; --on-ink: #18181b; --scrim: rgba(24, 24, 27, 0.74); --ok: #4ade80; --warn: #fb923c; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #18181b; --surface: #232327; --ink: #f1f0ec; --ink-soft: #d6d5d0; --muted: #a2a1a8;
-  --line: #3a3a40; --on-ink: #18181b; --scrim: rgba(24, 24, 27, 0.74); color-scheme: dark;
+  --line: #3a3a40; --on-ink: #18181b; --scrim: rgba(24, 24, 27, 0.74); --ok: #4ade80; --warn: #fb923c; color-scheme: dark;
 }
 
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
 html { height: 100%; box-sizing: border-box; }
 *, *::before, *::after { box-sizing: inherit; }
 body {
@@ -44,7 +53,7 @@ body {
 input { -webkit-user-select: text; user-select: text; }
 [hidden] { display: none !important; }
 
-#app {
+#app, #phone {
   height: 100%; display: flex; flex-direction: column; gap: 10px;
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
@@ -66,6 +75,7 @@ header { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; }
 }
 .chip b { font-variant-numeric: tabular-nums; font-weight: 700; }
 .chip.now { border-color: var(--ink); }
+.chip.off { opacity: 0.45; }
 .chip .tag { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
 .dot {
   --pc: #888; width: 24px; height: 24px; border-radius: 50%; flex: none;
@@ -75,12 +85,12 @@ header { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; }
 }
 .iconbtn {
   font: 700 14px/1 var(--body); color: var(--ink); background: var(--surface);
-  border: 0; border-radius: 999px; padding: 9px 14px; cursor: pointer;
+  border: 0; border-radius: 999px; padding: 9px 14px; cursor: pointer; min-height: 36px;
 }
 
 /* ---------- board ---------- */
 #stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
-#board {
+.board {
   --cell: 24px; --gap: 2px;
   display: grid; gap: var(--gap);
   grid-template-columns: calc(var(--cell) * 0.9) repeat(30, var(--cell));
@@ -88,11 +98,9 @@ header { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; }
 }
 .lbl {
   display: grid; place-items: center; color: var(--muted);
-  font: 500 max(9px, calc(var(--cell) * 0.36)) / 1 var(--mono);
+  font: 700 max(9px, calc(var(--cell) * 0.36)) / 1 var(--body);
 }
-.cell {
-  position: relative; border-radius: calc(var(--cell) * 0.14); cursor: pointer;
-}
+.cell { position: relative; border-radius: calc(var(--cell) * 0.14); cursor: pointer; }
 .cell.sel { z-index: 4; box-shadow: 0 0 0 2px var(--ring-light), 0 0 0 4px var(--ring-dark); }
 .cell.dim { filter: saturate(0.6); opacity: 0.6; }
 .pawn {
@@ -130,7 +138,7 @@ header { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; }
 @keyframes frame { from { transform: scale(1.35); opacity: 0; } }
 
 /* ---------- tray ---------- */
-#tray {
+.tray {
   flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px;
   background: var(--surface); border-radius: 18px; padding: 12px 16px; min-height: 84px;
 }
@@ -145,7 +153,7 @@ header { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; }
 .cluetext small { display: block; font: 400 15px/1.3 var(--body); color: var(--muted); }
 .preview { display: flex; align-items: center; gap: 10px; }
 .swatch { width: 52px; height: 52px; border-radius: 10px; flex: none; background: var(--line); }
-.coord { font: 500 22px/1 var(--mono); font-variant-numeric: tabular-nums; }
+.coord { font: 700 22px/1 var(--body); font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
 .btns { display: flex; gap: 10px; margin-left: auto; flex-wrap: wrap; }
 .hint { font-size: 14px; color: var(--muted); }
 .hint.warn { color: var(--ink); font-weight: 700; }
@@ -166,7 +174,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--ink); outli
 .peek {
   position: relative; width: 150px; height: 56px; border-radius: 12px; border: 2px dashed var(--muted);
   display: grid; place-items: center; text-align: center; font-size: 12px; line-height: 1.2; color: var(--muted);
-  padding: 4px 8px; cursor: pointer; touch-action: none;
+  padding: 4px 8px; cursor: pointer; touch-action: none; flex: none;
 }
 .peek.on { border: 2px solid var(--ink); color: transparent; background: var(--peek); }
 
@@ -190,26 +198,41 @@ input.text:focus { border-color: var(--ink); outline: none; }
   display: flex; flex-direction: column; gap: 18px;
   box-shadow: 0 20px 60px rgba(0,0,0,.18);
 }
+.card.wide { max-width: 760px; }
 .card h2 { margin: 0; font: 800 34px/1.05 var(--display); letter-spacing: -0.025em; text-wrap: balance; }
 .card h3 { margin: 0; font: 800 18px/1.2 var(--display); }
 .card p { margin: 0; color: var(--ink-soft); max-width: 60ch; }
 .lead { font-size: 18px; }
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .row.end { justify-content: flex-end; }
+.stack { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; }
 .players { display: flex; flex-direction: column; gap: 8px; }
-.prow { display: flex; gap: 10px; align-items: center; }
+.prow { display: flex; gap: 10px; align-items: center; min-height: 44px; }
 .prow .dot { width: 34px; height: 34px; font-size: 15px; }
 .prow input { flex: 1; font-size: 18px; padding: 10px 12px; }
+.prow .nm { flex: 1; font-size: 18px; min-width: 0; overflow-wrap: anywhere; }
 .x { width: 44px; height: 44px; border-radius: 12px; border: 0; background: transparent; color: var(--muted); font-size: 24px; cursor: pointer; }
-.seg { display: inline-flex; background: var(--bg); border-radius: 12px; padding: 4px; gap: 4px; }
+.seg { display: inline-flex; background: var(--bg); border-radius: 12px; padding: 4px; gap: 4px; flex-wrap: wrap; }
 .seg button { border: 0; background: transparent; color: var(--ink); font: 700 17px/1 var(--body); border-radius: 9px; padding: 11px 18px; cursor: pointer; }
 .seg button[aria-pressed="true"] { background: var(--ink); color: var(--on-ink); }
 .linkbtn { border: 0; background: none; color: var(--ink); font: 700 16px/1 var(--body); text-decoration: underline; text-underline-offset: 3px; padding: 10px 4px; cursor: pointer; }
 
+.lobby { display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: center; }
+.qr { width: 180px; height: 180px; background: #fff; border-radius: 14px; padding: 10px; }
+.qr svg { width: 100%; height: 100%; display: block; }
+.roomcode { font: 800 54px/1 var(--display); letter-spacing: 0.08em; }
+.url { font: 500 14px/1.4 var(--mono); overflow-wrap: anywhere; color: var(--ink-soft); -webkit-user-select: text; user-select: text; }
+.net { font-size: 14px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; }
+.net::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+.net.ok::before { background: var(--ok); }
+.net.bad { color: var(--warn); }
+.net.bad::before { background: var(--warn); }
+.empty { color: var(--muted); font-size: 15px; padding: 10px 0; }
+
 .cardpick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 .opt {
   border: 0; border-radius: 16px; padding: 0; cursor: pointer; background: none; color: var(--ink);
-  display: flex; flex-direction: column; gap: 8px; align-items: stretch; font: 500 16px/1 var(--mono);
+  display: flex; flex-direction: column; gap: 8px; align-items: stretch; font: 400 16px/1 var(--body);
 }
 .opt span.fill { aspect-ratio: 1; max-width: 100%; border-radius: 14px; display: block; box-shadow: inset 0 0 0 1px rgba(0,0,0,.08); }
 .opt[aria-pressed="true"] span.fill { box-shadow: 0 0 0 3px var(--surface), 0 0 0 6px var(--ink); }
@@ -226,18 +249,42 @@ input.text:focus { border-color: var(--ink); outline: none; }
 .rank li.first { background: var(--ink); color: var(--on-ink); }
 .place { font: 500 15px/1 var(--mono); width: 22px; color: inherit; opacity: .7; }
 
+/* ---------- phone controller ---------- */
+.ph-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ph-head .me { display: flex; align-items: center; gap: 8px; font: 800 18px/1.1 var(--display); min-width: 0; }
+.ph-head .me .dot { width: 30px; height: 30px; font-size: 14px; }
+.ph-head .score { font: 800 18px/1 var(--display); font-variant-numeric: tabular-nums; }
+.ph-head .tools { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+#phPanel { flex-direction: column; align-items: stretch; gap: 12px; max-height: 62%; overflow-y: auto; }
+#phPanel.full { max-height: none; flex: 0 1 auto; min-height: 0; }
+#phPanel .cardpick { grid-template-columns: repeat(4, 1fr); gap: 10px; }
+#phPanel .rowx { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+#phPanel .cluetext { font-size: 26px; }
+#phPanel .card-plain { display: flex; flex-direction: column; gap: 14px; }
+#phPanel h2 { margin: 0; font: 800 26px/1.1 var(--display); letter-spacing: -0.02em; text-wrap: balance; }
+#phPanel p { margin: 0; color: var(--ink-soft); }
+#phPanel button.primary, #phPanel button.ghost { width: 100%; }
+#phPanel .rowx button.primary { width: auto; flex: 1; }
+.ph-board { flex: 1; min-height: 120px; overflow: auto; border-radius: 16px; background: var(--surface); padding: 8px; -webkit-overflow-scrolling: touch; }
+.ph-board .board { width: max-content; margin: 0 auto; }
+.bigscore { font: 800 44px/1 var(--display); }
+
 @media (max-width: 560px) {
   .cardpick { grid-template-columns: repeat(2, 1fr); }
   .card { padding: 20px; }
   .card h2 { font-size: 28px; }
   .cluetext { font-size: 24px; }
   .brand h1 { font-size: 19px; }
+  .lobby { grid-template-columns: 1fr; justify-items: center; }
 }
 @media (prefers-reduced-motion: reduce) {
   .pawn.drop, .frame { animation: none; }
 }
 </style>
-
+<script src="vendor/peerjs.min.js"></script>
+<script src="vendor/qrcode.js"></script>
+</head>
+<body>
 <div id="app">
   <header>
     <div class="brand">
@@ -248,16 +295,39 @@ input.text:focus { border-color: var(--ink); outline: none; }
     <div class="scores" id="scores"></div>
     <button class="iconbtn" data-action="menu" id="menuBtn">Menú</button>
   </header>
-  <main id="stage"><div id="board" aria-label="Tablero de colores"></div></main>
-  <section id="tray" aria-live="polite"></section>
+  <main id="stage"><div id="board" class="board" aria-label="Tablero de colores"></div></main>
+  <section id="tray" class="tray" aria-live="polite"></section>
 </div>
+
+<div id="phone" hidden>
+  <div class="ph-head" id="phHead"></div>
+  <section id="phPanel" class="tray" aria-live="polite"></section>
+  <div class="ph-board" id="phBoardWrap" hidden><div id="phBoard" class="board" aria-label="Tablero de colores"></div></div>
+</div>
+
 <div id="sheet" class="sheet" hidden></div>
 
 <script>
 (() => {
   const COLS = 30, ROWS = 16, LETTERS = 'ABCDEFGHIJKLMNOP';
-  const KEY = 'pistas-de-color-v1';
+  const KEY = 'pistas-de-color-v1', PHONE_KEY = 'pistas-de-color-celular';
   const PCOLORS = ['#d7263d', '#1f4fd1', '#178a4c', '#7b3fe4', '#e46a12', '#0b7c86', '#d6338a', '#7a5523', '#36404f', '#b8860b'];
+  const ROOM_LETTERS = 'BCDFGHJKLMNPQRSTVWXZ';
+  const PREFIX = 'pistasdecolor-';
+
+  /* ---------- connection settings (overridable for local testing) ---------- */
+  const params = new URLSearchParams(location.search);
+  const TEST_KEYS = ['peerhost', 'peerport', 'peerpath', 'peersecure'];
+  const PEER_OPTS = (() => {
+    const o = { debug: 0, config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:global.stun.twilio.com:3478' }] } };
+    if (params.get('peerhost')) {
+      o.host = params.get('peerhost'); o.port = +params.get('peerport') || 9000;
+      o.path = params.get('peerpath') || '/'; o.secure = params.get('peersecure') === '1';
+      o.config = { iceServers: [] };
+    }
+    return o;
+  })();
+  const canNet = typeof Peer !== 'undefined';
 
   /* ---------- colour board (OKLCH → sRGB, gamut-clipped) ---------- */
   function oklchToRgb(L, C, hDeg) {
@@ -288,8 +358,7 @@ input.text:focus { border-color: var(--ink); outline: none; }
       for (let i = 0; i < 16; i++) { const mid = (lo + hi) / 2; inGamut(oklchToRgb(L, mid, h)) ? lo = mid : hi = mid; }
       C = lo;
     }
-    const rgb = oklchToRgb(L, C, h);
-    return '#' + rgb.map(enc).join('');
+    return '#' + oklchToRgb(L, C, h).map(enc).join('');
   }
   const COLORS = Array.from({ length: ROWS }, (_, r) => Array.from({ length: COLS }, (_, c) => cellHex(r, c)));
   const coord = p => LETTERS[p.r] + (p.c + 1);
@@ -298,132 +367,21 @@ input.text:focus { border-color: var(--ink); outline: none; }
   const $ = s => document.querySelector(s);
   const esc = s => String(s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   const rand = n => Math.floor(Math.random() * n);
-  const initial = name => (name.trim()[0] || '?').toUpperCase();
-  const dot = (i, extra = '') => `<span class="dot ${extra}" style="--pc:${S.players[i] ? S.players[i].color : PCOLORS[i]}">${esc(initial(S.players[i] ? S.players[i].name : ''))}</span>`;
-  const pname = i => esc(S.players[i].name);
-
-  /* ---------- state ---------- */
-  let S, sel = null, ui = { menu: false, rules: false, confirmNew: false, hint: '', justPlaced: -1 };
-  const fresh = (names) => ({
-    phase: 'setup',
-    setup: { names: names || ['', '', '', ''], rounds: 2 },
-    players: [], rounds: 2, turn: 0, card: [], target: null,
-    clue1: '', clue2: '', step: 1, order: [], gi: 0, markers: [], result: null,
-  });
-  function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
-  function load() { try { const v = JSON.parse(localStorage.getItem(KEY)); return v && v.phase ? v : null; } catch (e) { return null; } }
-
-  const giverIdx = () => S.turn % S.players.length;
-  const totalTurns = () => S.players.length * S.rounds;
-  const guesser = () => S.order[S.gi];
-  const occupied = (r, c) => S.markers.some(m => m.r === r && m.c === c);
-
-  function startGame() {
-    S.players = S.setup.names.map((n, i) => ({ name: n.trim() || `Jugador ${i + 1}`, color: PCOLORS[i], score: 0 }));
-    S.rounds = S.setup.rounds; S.turn = 0;
-    beginTurn(); keepAwake();
-  }
-  function beginTurn() {
-    S.card = drawCard(); S.target = null; S.clue1 = ''; S.clue2 = ''; S.step = 1; S.markers = []; S.result = null;
-    const n = S.players.length, g = giverIdx();
-    S.order = []; for (let k = 1; k < n; k++) S.order.push((g + k) % n);
-    S.gi = 0; S.phase = 'handoff'; sel = null; ui.hint = '';
-  }
-  function drawCard() {
-    const out = [];
-    while (out.length < 4) {
-      const r = rand(ROWS), c = rand(COLS);
-      if (out.some(o => Math.max(Math.abs(o.r - r), Math.abs(o.c - c)) < 3)) continue;
-      out.push({ r, c });
-    }
-    return out;
-  }
-  function reveal() {
-    const t = S.target, g = giverIdx(), pts = S.players.map(() => 0);
-    let inFrame = 0;
-    S.markers.forEach(m => {
-      const d = Math.max(Math.abs(m.r - t.r), Math.abs(m.c - t.c));
-      m.pts = d === 0 ? 3 : d === 1 ? 2 : d === 2 ? 1 : 0;
-      pts[m.p] += m.pts;
-      if (d <= 1) inFrame++;
-    });
-    pts[g] = inFrame;
-    S.players.forEach((p, i) => p.score += pts[i]);
-    S.result = { pts }; S.phase = 'reveal';
+  const initial = name => (String(name).trim()[0] || '?').toUpperCase();
+  const dotFor = (p, extra = '') => `<span class="dot ${extra}" style="--pc:${p.color}">${esc(initial(p.name))}</span>`;
+  const cleanClue = x => String(x || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+  const newCode = () => Array.from({ length: 4 }, () => ROOM_LETTERS[rand(ROOM_LETTERS.length)]).join('');
+  const lsGet = k => { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } };
+  const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+  function testQuery() {
+    const q = new URLSearchParams();
+    TEST_KEYS.forEach(k => { if (params.get(k)) q.set(k, params.get(k)); });
+    return q;
   }
 
-  /* ---------- actions ---------- */
-  const actions = {
-    menu() { ui.menu = true; ui.confirmNew = false; render(); },
-    closeMenu() { ui.menu = false; ui.rules = false; render(); },
-    rules() { ui.rules = true; render(); },
-    closeRules() { ui.rules = false; render(); },
-    newGame() {
-      if (!ui.confirmNew) { ui.confirmNew = true; render(); return; }
-      const names = S.players.length ? S.players.map(p => p.name) : S.setup.names;
-      S = fresh(names); ui.menu = false; ui.confirmNew = false; sel = null; save(); render();
-    },
-    addPlayer() { if (S.setup.names.length < 10) { S.setup.names.push(''); save(); render(); focusLast(); } },
-    removePlayer(el) { if (S.setup.names.length > 2) { S.setup.names.splice(+el.dataset.i, 1); save(); render(); } },
-    rounds(el) { S.setup.rounds = +el.dataset.v; save(); render(); },
-    start() { startGame(); save(); render(); },
-    showCard() { S.phase = 'pick'; save(); render(); },
-    pickCard(el) { S.target = { ...S.card[+el.dataset.i] }; save(); render(); },
-    redraw() { S.card = drawCard(); S.target = null; save(); render(); },
-    hideCard() { if (!S.target) return; S.phase = 'guess'; S.step = 1; S.gi = 0; save(); render(); },
-    place() {
-      if (!sel) return;
-      S.markers.push({ p: guesser(), r: sel.r, c: sel.c, step: S.step });
-      ui.justPlaced = S.markers.length - 1; sel = null; ui.hint = ''; S.gi++;
-      if (S.gi >= S.order.length) S.phase = S.step === 1 ? 'clue2' : 'ready';
-      save(); render();
-    },
-    undo() {
-      if (!S.markers.length) return;
-      const last = S.markers[S.markers.length - 1];
-      if (last.step !== S.step && S.phase !== 'clue2') return;
-      S.markers.pop(); sel = null; ui.hint = '';
-      if (S.phase === 'clue2') { S.phase = 'guess'; S.gi = S.order.length - 1; }
-      else if (S.phase === 'ready') { S.phase = 'guess'; S.gi = S.order.length - 1; }
-      else S.gi--;
-      save(); render();
-    },
-    round2() { S.step = 2; S.order.reverse(); S.gi = 0; S.phase = 'guess'; sel = null; save(); render(); },
-    reveal() { reveal(); save(); render(); },
-    next() { S.turn++; if (S.turn >= totalTurns()) S.phase = 'end'; else beginTurn(); save(); render(); },
-    rematch() {
-      const names = S.players.map(p => p.name), rounds = S.rounds;
-      S = fresh(names); S.setup.rounds = rounds; startGame(); save(); render();
-    },
-    toSetup() { const names = S.players.map(p => p.name); S = fresh(names); save(); render(); },
-  };
-  function focusLast() { const ins = document.querySelectorAll('.prow input'); if (ins.length) ins[ins.length - 1].focus(); }
-
-  document.addEventListener('click', e => {
-    const el = e.target.closest('[data-action]');
-    if (el && !el.disabled && actions[el.dataset.action]) actions[el.dataset.action](el);
-  });
-  document.addEventListener('input', e => {
-    const t = e.target;
-    if (t.matches('.prow input')) { S.setup.names[+t.dataset.i] = t.value; refreshSetupDots(); save(); }
-    if (t.id === 'clue1in') { S.clue1 = t.value; save(); }
-    if (t.id === 'clue2in') { S.clue2 = t.value; save(); }
-  });
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && e.target.matches('input.text')) e.target.blur();
-  });
-  document.addEventListener('contextmenu', e => { if (!e.target.matches('input')) e.preventDefault(); });
-
-  // hold-to-peek for the cue giver
-  document.addEventListener('pointerdown', e => { const p = e.target.closest('.peek'); if (p) { p.classList.add('on'); try { p.setPointerCapture(e.pointerId); } catch (_) {} } });
-  const unpeek = () => document.querySelectorAll('.peek.on').forEach(p => p.classList.remove('on'));
-  ['pointerup', 'pointercancel'].forEach(ev => document.addEventListener(ev, unpeek));
-
-  /* ---------- board ---------- */
-  const board = $('#board');
-  const cells = [];
-  function buildBoard() {
-    const frag = document.createDocumentFragment();
+  /* ---------- shared board drawing ---------- */
+  function buildBoard(el) {
+    const cells = [], frag = document.createDocumentFragment();
     const corner = document.createElement('div'); corner.style.cssText = 'grid-row:1;grid-column:1'; frag.appendChild(corner);
     for (let c = 0; c < COLS; c++) {
       const l = document.createElement('div'); l.className = 'lbl'; l.textContent = c + 1;
@@ -441,8 +399,614 @@ input.text:focus { border-color: var(--ink); outline: none; }
         cells[r][c] = d; frag.appendChild(d);
       }
     }
-    board.appendChild(frag);
+    el.appendChild(frag);
+    return cells;
   }
+  function frameEl(t, radius, cls) {
+    const f = document.createElement('div'); f.className = 'frame ' + cls;
+    const r0 = Math.max(0, t.r - radius), r1 = Math.min(ROWS - 1, t.r + radius);
+    const c0 = Math.max(0, t.c - radius), c1 = Math.min(COLS - 1, t.c + radius);
+    f.style.gridRow = `${r0 + 2} / ${r1 + 3}`; f.style.gridColumn = `${c0 + 2} / ${c1 + 3}`;
+    return f;
+  }
+  // d: {players, markers, sel, selPlayer, target, reveal, drop}
+  function drawBoard(el, cells, d) {
+    el.querySelectorAll('.pawn,.frame,.target-mark,.pts').forEach(n => n.remove());
+    el.querySelectorAll('.cell.sel,.cell.dim').forEach(n => n.classList.remove('sel', 'dim'));
+    d.markers.forEach((m, i) => {
+      const p = document.createElement('span');
+      p.className = 'pawn' + (i === d.drop ? ' drop' : '');
+      p.style.setProperty('--pc', d.players[m.p].color);
+      p.textContent = initial(d.players[m.p].name);
+      cells[m.r][m.c].appendChild(p);
+      if (d.reveal && m.pts != null) {
+        const b = document.createElement('span'); b.className = 'pts'; b.textContent = '+' + m.pts;
+        cells[m.r][m.c].appendChild(b);
+      }
+    });
+    if (d.sel && d.selPlayer != null) {
+      const cell = cells[d.sel.r][d.sel.c]; cell.classList.add('sel');
+      const g = document.createElement('span'); g.className = 'pawn ghost';
+      g.style.setProperty('--pc', d.players[d.selPlayer].color); g.textContent = initial(d.players[d.selPlayer].name);
+      cell.appendChild(g);
+    }
+    if (d.target) {
+      const tm = document.createElement('span'); tm.className = 'target-mark';
+      cells[d.target.r][d.target.c].appendChild(tm);
+    }
+    if (d.reveal && d.target) {
+      el.appendChild(frameEl(d.target, 2, 'outer'));
+      el.appendChild(frameEl(d.target, 1, ''));
+      for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++)
+        if (Math.max(Math.abs(r - d.target.r), Math.abs(c - d.target.c)) > 2) cells[r][c].classList.add('dim');
+    }
+  }
+
+  const RULES = `
+    <ol class="rules">
+      <li>En cada turno una persona <b>da las pistas</b>. Ve una tarjeta con 4 colores y elige uno en secreto.</li>
+      <li>Dice en voz alta una pista de <b>una palabra</b>. No vale nombrar colores ni decir filas, números o posiciones del tablero.</li>
+      <li>Por turnos, cada jugador elige la casilla que cree que es y coloca su ficha. Dos fichas no pueden ir en la misma casilla.</li>
+      <li>Luego da una segunda pista de <b>hasta dos palabras</b> y todos colocan una segunda ficha, en orden inverso.</li>
+      <li>Se revela el color con un marco de 3×3 a su alrededor.</li>
+    </ol>
+    <div class="scoring">
+      <span class="n">3</span><span>en la casilla exacta</span>
+      <span class="n">2</span><span>dentro del marco</span>
+      <span class="n">1</span><span>en el anillo que rodea al marco (línea punteada)</span>
+      <span class="n">+1</span><span>para quien da la pista por cada ficha dentro del marco</span>
+    </div>
+    <p>La partida termina cuando todos han dado pistas el número de vueltas elegido. Gana quien tenga más puntos.</p>`;
+
+  // hold-to-peek for the cue giver (works on iPad and phones)
+  document.addEventListener('pointerdown', e => { const p = e.target.closest('.peek'); if (p) { p.classList.add('on'); try { p.setPointerCapture(e.pointerId); } catch (_) {} } });
+  const unpeek = () => document.querySelectorAll('.peek.on').forEach(p => p.classList.remove('on'));
+  ['pointerup', 'pointercancel'].forEach(ev => document.addEventListener(ev, unpeek));
+  document.addEventListener('contextmenu', e => { if (!e.target.matches('input')) e.preventDefault(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.matches('input.text')) e.target.blur(); });
+
+  let lock = null;
+  async function keepAwake() { try { if ('wakeLock' in navigator && !lock) { lock = await navigator.wakeLock.request('screen'); lock.addEventListener('release', () => { lock = null; }); } } catch (e) {} }
+
+  const actions = {};
+  document.addEventListener('click', e => {
+    const el = e.target.closest('[data-action]');
+    if (el && !el.disabled && actions[el.dataset.action]) actions[el.dataset.action](el);
+  });
+
+  /* =====================================================================
+     PHONE CONTROLLER  (page opened with ?sala=CODE)
+     ===================================================================== */
+  if (params.has('sala')) { phoneMain(); return; }
+
+  function phoneMain() {
+    $('#app').hidden = true; $('#phone').hidden = false;
+    const saved = lsGet(PHONE_KEY) || {};
+    const P = {
+      code: (params.get('sala') || saved.code || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4),
+      name: saved.name || '', pid: saved.pid || (Date.now().toString(36) + Math.random().toString(36).slice(2, 10)),
+      joined: false, status: 'idle', err: '', rejected: '', rules: false, v: null, sel: null, hint: '',
+      zoom: saved.zoom || 0, drafts: { c1: '', c2: '' }, lastKey: '',
+    };
+    if (saved.joined && saved.code === P.code && P.name) P.joined = true;
+    const persist = () => lsSet(PHONE_KEY, { code: P.code, name: P.name, pid: P.pid, joined: P.joined, zoom: P.zoom });
+    persist();
+
+    const board = $('#phBoard'), wrap = $('#phBoardWrap');
+    const cells = buildBoard(board);
+    function applyZoom() {
+      if (!P.zoom) P.zoom = Math.max(20, Math.min(34, Math.floor((wrap.clientWidth || window.innerWidth - 48) / 33)));
+      board.style.setProperty('--cell', P.zoom + 'px');
+      board.style.setProperty('--gap', Math.max(1, Math.round(P.zoom * 0.07)) + 'px');
+    }
+
+    let peer = null, conn = null, retryT = null;
+    function phoneConnect() {
+      clearTimeout(retryT);
+      if (!P.joined || P.rejected) return;
+      if (!canNet) { P.err = 'No se pudo cargar la conexión. Revisa el internet y recarga la página.'; render(); return; }
+      if (!peer || peer.destroyed) {
+        P.status = 'connecting';
+        peer = new Peer(PEER_OPTS);
+        peer.on('open', openConn);
+        peer.on('disconnected', () => { setTimeout(() => { if (peer && !peer.destroyed && peer.disconnected) peer.reconnect(); }, 1000); });
+        peer.on('error', e => {
+          if (e.type === 'peer-unavailable') {
+            if (!P.v) P.err = `No encontramos la sala ${P.code}. Revisa el código y que la partida esté abierta en el iPad.`;
+            P.status = 'connecting';
+          } else if (e.type === 'browser-incompatible') {
+            P.err = 'Este navegador no puede conectarse. Prueba con Safari o Chrome.';
+          }
+          scheduleRetry(); render();
+        });
+        render();
+      } else if (peer.disconnected) {
+        peer.reconnect();
+      } else if (peer.open) {
+        openConn();
+      }
+    }
+    function openConn() {
+      if (conn && conn.open) return;
+      if (conn) { try { conn.close(); } catch (e) {} }
+      const c = peer.connect(PREFIX + P.code, { serialization: 'json', reliable: true });
+      conn = c;
+      c.on('open', () => { if (conn !== c) return; P.status = 'open'; P.err = ''; c.send({ t: 'hello', pid: P.pid, name: P.name }); render(); });
+      c.on('data', d => { if (conn === c) onData(d); });
+      c.on('close', () => { if (conn === c) { P.status = 'connecting'; scheduleRetry(); render(); } });
+      c.on('error', () => { if (conn === c) scheduleRetry(); });
+      setTimeout(() => { if (conn === c && !c.open) { try { c.close(); } catch (e) {} scheduleRetry(); } }, 9000);
+    }
+    function scheduleRetry() { if (P.rejected || !P.joined) return; clearTimeout(retryT); retryT = setTimeout(phoneConnect, 2500); }
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && P.joined) { keepAwake(); if (!conn || !conn.open) phoneConnect(); }
+    });
+
+    function onData(d) {
+      if (!d || typeof d !== 'object') return;
+      if (d.t === 'reject') { P.rejected = String(d.msg || 'No puedes entrar a esta sala.'); P.joined = false; P.v = null; persist(); try { conn.close(); } catch (e) {} render(); return; }
+      if (d.t !== 'state' || !d.v) return;
+      const prev = P.v, v = d.v;
+      P.v = v;
+      const key = v.phase + ':' + v.turn + ':' + v.step + ':' + v.gi;
+      if (key !== P.lastKey) {
+        P.sel = null; P.hint = '';
+        const myTurn = v.phase === 'guess' && v.order[v.gi] === v.you;
+        if (myTurn && navigator.vibrate) navigator.vibrate(120);
+        if (!prev || prev.turn !== v.turn) P.drafts = { c1: '', c2: '' };
+        P.lastKey = key;
+        if (v.phase === 'reveal' && v.target && (!prev || prev.phase !== 'reveal')) {
+          requestAnimationFrame(() => cells[v.target.r][v.target.c].scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' }));
+        }
+      }
+      render();
+    }
+    const send = (a, extra = {}) => { if (conn && conn.open && P.v) conn.send({ t: 'act', a, turn: P.v.turn, ...extra }); };
+
+    Object.assign(actions, {
+      p_join() {
+        const code = ($('#jcode').value || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4);
+        const name = ($('#jname').value || '').trim().slice(0, 16);
+        if (code.length !== 4) { P.err = 'El código de la sala tiene 4 letras.'; render(); return; }
+        if (!name) { P.err = 'Escribe tu nombre.'; render(); return; }
+        P.code = code; P.name = name; P.joined = true; P.rejected = ''; P.err = ''; P.v = null;
+        persist(); keepAwake(); phoneConnect(); render();
+      },
+      p_leave() {
+        P.joined = false; P.v = null; P.rejected = ''; P.err = ''; persist();
+        if (conn) { try { conn.close(); } catch (e) {} conn = null; }
+        render();
+      },
+      p_pick(el) { send('pickCard', { i: +el.dataset.i }); },
+      p_redraw() { send('redraw'); },
+      p_hide() { send('hideCard', { clue: P.drafts.c1 }); },
+      p_place() { if (P.sel) send('place', { r: P.sel.r, c: P.sel.c }); P.sel = null; render(); },
+      p_round2() { send('round2', { clue: P.drafts.c2 }); },
+      p_reveal() { send('reveal'); },
+      p_next() { send('next'); },
+      p_zoom(el) { P.zoom = Math.max(12, Math.min(48, (P.zoom || 24) + (+el.dataset.d))); persist(); applyZoom(); },
+      p_rules() { P.rules = !P.rules; render(); },
+    });
+    document.addEventListener('input', e => {
+      if (e.target.id === 'pc1') P.drafts.c1 = e.target.value;
+      if (e.target.id === 'pc2') P.drafts.c2 = e.target.value;
+    });
+    board.addEventListener('click', e => {
+      const d = e.target.closest('.cell'), v = P.v;
+      if (!d || !v || v.phase !== 'guess' || v.order[v.gi] !== v.you) return;
+      const r = +d.dataset.r, c = +d.dataset.c;
+      if (v.markers.some(m => m.r === r && m.c === c)) { P.hint = 'Esa casilla ya tiene una ficha.'; P.sel = null; }
+      else { P.sel = (P.sel && P.sel.r === r && P.sel.c === c) ? null : { r, c }; P.hint = ''; }
+      render();
+    });
+
+    function clueHTML(v) {
+      const gname = esc(v.players[v.giver].name);
+      if (v.step === 1) return v.clue1
+        ? `<div class="eyebrow">Pista de ${gname}</div><div class="cluetext">«${esc(v.clue1)}»</div>`
+        : `<div class="eyebrow">Pista de ${gname}</div><div class="cluetext quiet">Escucha la pista de una palabra.</div>`;
+      const first = v.clue1 ? `<small>Primera: «${esc(v.clue1)}»</small>` : '';
+      return v.clue2
+        ? `<div class="eyebrow">Segunda pista de ${gname}</div><div class="cluetext">«${esc(v.clue2)}»${first}</div>`
+        : `<div class="eyebrow">Segunda pista de ${gname}</div><div class="cluetext quiet">Escucha la pista de dos palabras.${first}</div>`;
+    }
+
+    function render() {
+      const head = $('#phHead'), panel = $('#phPanel'), v = P.v;
+      const status = !P.joined ? '' : P.status === 'open' ? '<span class="net ok">Conectado</span>' : '<span class="net bad">Conectando…</span>';
+      if (v && P.joined) {
+        const me = v.players[v.you];
+        head.innerHTML = `<div class="me">${dotFor(me)}${esc(me.name)}</div><span class="score">${me.score} pts</span>
+          <div class="tools">${status}<button class="iconbtn" data-action="p_zoom" data-d="-4" aria-label="Alejar tablero">−</button><button class="iconbtn" data-action="p_zoom" data-d="4" aria-label="Acercar tablero">+</button></div>`;
+      } else {
+        head.innerHTML = `<div class="brand"><div class="logo" aria-hidden="true"><i style="background:#e0533d"></i><i style="background:#e8b52c"></i><i style="background:#2f8f6a"></i><i style="background:#3b5bd6"></i></div><h1>Pistas de Color</h1></div><div class="tools">${status}</div>`;
+      }
+
+      let html = '', showBoard = false;
+      if (P.rules) {
+        html = `<div class="card-plain"><h2>Cómo se juega</h2>${RULES}<button class="primary" data-action="p_rules">Entendido</button></div>`;
+      } else if (!P.joined) {
+        html = `<div class="card-plain">
+          <h2>Entrar a la partida</h2>
+          ${P.rejected ? `<p><b>${esc(P.rejected)}</b></p>` : '<p>Escribe el código que aparece en el iPad y tu nombre.</p>'}
+          <label class="eyebrow" for="jcode">Código de la sala</label>
+          <input class="text" id="jcode" maxlength="4" autocomplete="off" autocapitalize="characters" placeholder="ABCD" value="${esc(P.code)}" style="text-transform:uppercase;letter-spacing:.2em">
+          <label class="eyebrow" for="jname">Tu nombre</label>
+          <input class="text" id="jname" maxlength="16" autocomplete="off" placeholder="Por ejemplo: Ana" value="${esc(P.name)}">
+          ${P.err ? `<p class="net bad">${esc(P.err)}</p>` : ''}
+          <button class="primary" data-action="p_join">Entrar</button>
+          <button class="linkbtn" data-action="p_rules">Cómo se juega</button></div>`;
+      } else if (!v) {
+        html = `<div class="card-plain"><h2>Entrando a la sala ${esc(P.code)}…</h2>
+          <p>${P.err ? esc(P.err) : 'Conectando con el iPad. Esto tarda unos segundos.'}</p>
+          <button class="ghost" data-action="p_leave">Cambiar código o nombre</button></div>`;
+      } else {
+        const g = v.giver, isG = v.you === g, gname = g >= 0 ? esc(v.players[g].name) : '';
+        const myTurn = v.phase === 'guess' && v.order[v.gi] === v.you;
+        const tcolor = v.target ? COLORS[v.target.r][v.target.c] : '';
+        const peek = isG && v.target ? `<div class="peek" style="--peek:${tcolor}">Mantén pulsado para ver tu color</div>` : '';
+        switch (v.phase) {
+          case 'lobby':
+            html = `<div class="card-plain"><h2>¡Listo, ${esc(v.players[v.you].name)}!</h2>
+              <p>Esperando a que empiece la partida en el iPad.</p>
+              <div class="players">${v.players.map(p => `<div class="prow">${dotFor(p)}<span class="nm">${esc(p.name)}</span></div>`).join('')}</div>
+              <button class="linkbtn" data-action="p_rules">Cómo se juega</button>
+              <button class="ghost" data-action="p_leave">Salir de la sala</button></div>`;
+            break;
+          case 'pick':
+            if (isG) {
+              html = `<div class="card-plain"><h2>Elige tu color secreto</h2>
+                <p>Que nadie vea tu pantalla. Toca uno de los cuatro.</p>
+                <div class="cardpick">${v.card.map((p, i) => {
+                  const on = v.target && v.target.r === p.r && v.target.c === p.c;
+                  return `<button class="opt" data-action="p_pick" data-i="${i}" aria-pressed="${on}"><span class="fill" style="background:${COLORS[p.r][p.c]}"></span>${coord(p)}</button>`;
+                }).join('')}</div>
+                <button class="linkbtn" data-action="p_redraw">Sacar otra tarjeta</button>
+                <label for="pc1" class="eyebrow">Tu pista de una palabra (opcional: saldrá en el iPad)</label>
+                <input class="text" id="pc1" maxlength="30" autocomplete="off" placeholder="Por ejemplo: aguacate" value="${esc(P.drafts.c1)}">
+                <button class="primary" data-action="p_hide" ${v.target ? '' : 'disabled'}>Listo: empezar a adivinar</button></div>`;
+            } else {
+              html = `<div class="card-plain"><h2>${gname} está eligiendo un color</h2><p>Prepárate para escuchar su pista.</p></div>`;
+            }
+            break;
+          case 'guess':
+            showBoard = true;
+            if (myTurn) {
+              html = `<div class="rowx"><div class="clue">${clueHTML(v)}</div></div>
+                <div class="rowx"><div><div class="eyebrow">Te toca · ficha ${v.step} de 2</div>
+                  <div class="preview">${P.sel ? `<span class="swatch" style="background:${COLORS[P.sel.r][P.sel.c]}"></span><span class="coord">${coord(P.sel)}</span>` : `<span class="hint ${P.hint ? 'warn' : ''}">${P.hint || 'Toca una casilla del tablero.'}</span>`}</div></div>
+                  <button class="primary" data-action="p_place" ${P.sel ? '' : 'disabled'}>Colocar ficha</button></div>`;
+            } else {
+              const now = v.players[v.order[v.gi]];
+              html = `<div class="rowx">${peek}<div class="clue">${clueHTML(v)}</div></div>
+                <div class="rowx"><div class="who">${dotFor(now)}<div><div class="eyebrow">Turno de</div><div class="big">${esc(now.name)}</div></div></div></div>`;
+            }
+            break;
+          case 'clue2':
+            showBoard = true;
+            html = isG
+              ? `<div class="rowx">${peek}<div><div class="eyebrow">Segunda pista</div><div class="big">Hasta dos palabras</div></div></div>
+                 <input class="text" id="pc2" maxlength="40" autocomplete="off" placeholder="Escríbela aquí (opcional)" value="${esc(P.drafts.c2)}">
+                 <button class="primary" data-action="p_round2">Empezar segunda ronda</button>`
+              : `<div class="rowx"><div class="who">${dotFor(v.players[g])}<div><div class="eyebrow">Segunda pista</div><div class="big">${gname} está pensando</div></div></div></div>`;
+            break;
+          case 'ready':
+            showBoard = true;
+            html = isG
+              ? `<div class="rowx">${peek}<div class="big">Todas las fichas están puestas</div></div><button class="primary" data-action="p_reveal">Revelar mi color</button>`
+              : `<div class="big">Todas las fichas están puestas</div><p>Esperando a que ${gname} revele su color.</p>`;
+            break;
+          case 'reveal': {
+            showBoard = true;
+            const mine = v.result ? v.result.pts[v.you] : 0;
+            html = `<div class="rowx"><div class="preview"><span class="swatch" style="background:${tcolor}"></span><div><div class="eyebrow">Era</div><span class="coord">${coord(v.target)}</span></div></div>
+                <div><div class="eyebrow">${isG ? 'Ganaste por tus pistas' : 'Ganaste'}</div><div class="bigscore">+${mine}</div></div></div>
+              <button class="primary" data-action="p_next">${v.turn + 1 >= v.total ? 'Ver resultado final' : 'Siguiente turno'}</button>`;
+            break;
+          }
+          case 'end': {
+            const ranked = v.players.map((p, i) => ({ ...p, i })).sort((a, b) => b.score - a.score);
+            const top = ranked[0].score;
+            html = `<div class="card-plain"><h2>${ranked.filter(p => p.score === top).length > 1 ? '¡Empate!' : '¡Gana ' + esc(ranked[0].name) + '!'}</h2>
+              <ol class="rank">${ranked.map(p => `<li class="${p.score === top ? 'first' : ''}"><span class="place">${ranked.findIndex(q => q.score === p.score) + 1}</span>${dotFor(p)}<span class="nm">${esc(p.name)}${p.i === v.you ? ' (tú)' : ''}</span><b>${p.score}</b></li>`).join('')}</ol>
+              <p>Pueden jugar otra vez desde el iPad.</p></div>`;
+            break;
+          }
+        }
+      }
+      const active = document.activeElement, activeId = active && active.id, caret = active && active.selectionStart;
+      panel.innerHTML = html;
+      if (activeId) { const el = document.getElementById(activeId); if (el && el.tagName === 'INPUT') { el.focus(); try { el.setSelectionRange(caret, caret); } catch (e) {} } }
+      wrap.hidden = !showBoard;
+      panel.classList.toggle('full', !showBoard);
+      if (showBoard && v) {
+        applyZoom();
+        const myTurn = v.phase === 'guess' && v.order[v.gi] === v.you;
+        drawBoard(board, cells, {
+          players: v.players, markers: v.markers, sel: myTurn ? P.sel : null, selPlayer: v.you,
+          target: v.target, reveal: v.phase === 'reveal',
+        });
+      }
+    }
+
+    render();
+    if (P.joined) { keepAwake(); phoneConnect(); }
+  }
+
+  /* =====================================================================
+     TABLE (iPad): single-device mode, and host for phones
+     ===================================================================== */
+  let S, sel = null, ui = { menu: false, rules: false, confirmNew: false, hint: '', justPlaced: -1 };
+  const fresh = (names) => ({
+    mode: 'local', room: '',
+    phase: 'setup',
+    setup: { names: names || ['', '', '', ''], rounds: 2 },
+    players: [], rounds: 2, turn: 0, card: [], target: null,
+    clue1: '', clue2: '', step: 1, order: [], gi: 0, markers: [], result: null,
+  });
+  const save = () => lsSet(KEY, S);
+  const load = () => { const v = lsGet(KEY); return v && v.phase ? v : null; };
+
+  const remote = () => S.mode === 'remote';
+  const giverIdx = () => S.turn % S.players.length;
+  const totalTurns = () => S.players.length * S.rounds;
+  const guesser = () => S.order[S.gi];
+  const occupied = (r, c) => S.markers.some(m => m.r === r && m.c === c);
+  const pname = i => esc(S.players[i].name);
+  const dot = i => dotFor(S.players[i]);
+
+  function startLocal() {
+    S.players = S.setup.names.map((n, i) => ({ name: n.trim() || `Jugador ${i + 1}`, color: PCOLORS[i], score: 0 }));
+    S.rounds = S.setup.rounds; S.turn = 0;
+    beginTurn(); keepAwake();
+  }
+  function startRemote() {
+    S.players.forEach(p => { p.score = 0; });
+    S.rounds = S.setup.rounds; S.turn = 0;
+    beginTurn(); keepAwake();
+  }
+  function beginTurn() {
+    S.card = drawCard(); S.target = null; S.clue1 = ''; S.clue2 = ''; S.step = 1; S.markers = []; S.result = null;
+    const n = S.players.length, g = giverIdx();
+    S.order = []; for (let k = 1; k < n; k++) S.order.push((g + k) % n);
+    S.gi = 0; S.phase = remote() ? 'pick' : 'handoff'; sel = null; ui.hint = '';
+  }
+  function drawCard() {
+    const out = [];
+    while (out.length < 4) {
+      const r = rand(ROWS), c = rand(COLS);
+      if (out.some(o => Math.max(Math.abs(o.r - r), Math.abs(o.c - c)) < 3)) continue;
+      out.push({ r, c });
+    }
+    return out;
+  }
+  function placeAt(r, c) {
+    S.markers.push({ p: guesser(), r, c, step: S.step });
+    ui.justPlaced = S.markers.length - 1; sel = null; ui.hint = ''; S.gi++;
+    if (S.gi >= S.order.length) S.phase = S.step === 1 ? 'clue2' : 'ready';
+  }
+  function startRound2() { S.step = 2; S.order.reverse(); S.gi = 0; S.phase = 'guess'; sel = null; }
+  function reveal() {
+    const t = S.target, g = giverIdx(), pts = S.players.map(() => 0);
+    let inFrame = 0;
+    S.markers.forEach(m => {
+      const d = Math.max(Math.abs(m.r - t.r), Math.abs(m.c - t.c));
+      m.pts = d === 0 ? 3 : d === 1 ? 2 : d === 2 ? 1 : 0;
+      pts[m.p] += m.pts;
+      if (d <= 1) inFrame++;
+    });
+    pts[g] = inFrame;
+    S.players.forEach((p, i) => p.score += pts[i]);
+    S.result = { pts }; S.phase = 'reveal';
+  }
+  function nextTurn() { S.turn++; if (S.turn >= totalTurns()) S.phase = 'end'; else beginTurn(); }
+  function backToSetup() {
+    if (remote()) {
+      Object.assign(S, { phase: 'setup', turn: 0, card: [], target: null, clue1: '', clue2: '', step: 1, order: [], gi: 0, markers: [], result: null });
+      S.players.forEach(p => { p.score = 0; });
+    } else {
+      const names = S.players.length ? S.players.map(p => p.name) : S.setup.names;
+      S = fresh(names);
+    }
+    sel = null;
+  }
+
+  /* ---------- hosting a room for phones ---------- */
+  let peer = null, hostAttempts = 0;
+  const conns = new Map();
+  const net = { status: 'off', error: '' };
+
+  function joinURL() {
+    const q = testQuery(); q.set('sala', S.room);
+    return location.origin + location.pathname + '?' + q.toString();
+  }
+  function startHost() {
+    if (peer || !remote()) return;
+    if (!canNet || !/^https?:$/.test(location.protocol)) {
+      net.status = 'error'; net.error = 'No se puede abrir la sala desde aquí. Abre el juego desde su página web.'; return;
+    }
+    if (!S.room) { S.room = newCode(); save(); }
+    net.status = 'connecting'; net.error = '';
+    const p = new Peer(PREFIX + S.room, PEER_OPTS);
+    peer = p;
+    p.on('open', () => { if (peer !== p) return; hostAttempts = 0; net.status = 'open'; net.error = ''; render(); });
+    p.on('connection', c => setupConn(c));
+    p.on('disconnected', () => {
+      if (peer !== p) return;
+      net.status = 'connecting'; render();
+      setTimeout(() => { if (peer === p && !p.destroyed && p.disconnected) p.reconnect(); }, 2000);
+    });
+    p.on('error', err => {
+      if (peer !== p) return;
+      if (err.type === 'unavailable-id') {
+        // the code is still held (e.g. right after a reload): wait, or pick a new one if nobody joined yet
+        p.destroy(); peer = null; hostAttempts++;
+        if (S.phase === 'setup' && !S.players.length && hostAttempts >= 2) { S.room = newCode(); save(); }
+        net.status = 'connecting'; render();
+        setTimeout(startHost, 3000);
+        return;
+      }
+      if (['network', 'server-error', 'socket-error', 'socket-closed', 'disconnected'].includes(err.type)) {
+        net.status = 'connecting'; net.error = 'Sin conexión con el servidor. Reintentando…'; render();
+        setTimeout(() => { if (peer === p && !p.destroyed && p.disconnected) p.reconnect(); }, 3000);
+        return;
+      }
+      if (err.type === 'browser-incompatible') { net.status = 'error'; net.error = 'Este navegador no permite jugar con celulares. Usa Safari o Chrome.'; render(); }
+    });
+  }
+  function stopHost() {
+    conns.forEach(c => { try { c.close(); } catch (e) {} });
+    conns.clear();
+    if (peer) { try { peer.destroy(); } catch (e) {} peer = null; }
+    net.status = 'off'; net.error = '';
+  }
+  function setupConn(c) {
+    c.on('data', d => onHostData(c, d));
+    const gone = () => {
+      if (c.pid && conns.get(c.pid) === c) {
+        conns.delete(c.pid);
+        const p = S.players.find(q => q.pid === c.pid); if (p) p.online = false;
+        render();
+      }
+    };
+    c.on('close', gone); c.on('error', gone);
+  }
+  function onHostData(c, d) {
+    if (!d || typeof d !== 'object' || !remote()) return;
+    if (d.t === 'hello') {
+      const name = String(d.name || '').trim().slice(0, 16) || 'Jugador';
+      const pid = String(d.pid || '').slice(0, 40);
+      if (!pid) return;
+      let i = S.players.findIndex(p => p.pid === pid);
+      if (i < 0) i = S.players.findIndex(p => !p.online && p.name.toLowerCase() === name.toLowerCase());
+      if (i < 0) {
+        const reject = msg => { try { c.send({ t: 'reject', msg }); } catch (e) {} setTimeout(() => { try { c.close(); } catch (e) {} }, 500); };
+        if (S.phase !== 'setup') return reject('La partida ya empezó. Podrás entrar en la siguiente.');
+        if (S.players.length >= 10) return reject('La sala está llena: el máximo es 10 jugadores.');
+        const used = new Set(S.players.map(p => p.color));
+        S.players.push({ name, color: PCOLORS.find(col => !used.has(col)) || PCOLORS[0], score: 0, pid, online: true });
+        i = S.players.length - 1;
+      }
+      const pl = S.players[i];
+      pl.pid = pid; pl.online = true;
+      if (S.phase === 'setup') pl.name = name;
+      const old = conns.get(pid); if (old && old !== c) { try { old.close(); } catch (e) {} }
+      c.pid = pid; conns.set(pid, c);
+      save(); render();
+      return;
+    }
+    if (d.t === 'act') {
+      const i = S.players.findIndex(p => p.pid === c.pid);
+      if (i >= 0) remoteAct(i, d);
+    }
+  }
+  function remoteAct(i, d) {
+    if (S.phase === 'setup' || S.phase === 'end' || d.turn !== S.turn) return;
+    const g = giverIdx();
+    switch (d.a) {
+      case 'pickCard': if (S.phase === 'pick' && i === g && S.card[d.i]) S.target = { ...S.card[d.i] }; break;
+      case 'redraw': if (S.phase === 'pick' && i === g) { S.card = drawCard(); S.target = null; } break;
+      case 'hideCard': if (S.phase === 'pick' && i === g && S.target) { S.clue1 = cleanClue(d.clue); S.phase = 'guess'; S.step = 1; S.gi = 0; } break;
+      case 'place': {
+        const r = d.r | 0, c = d.c | 0;
+        if (S.phase === 'guess' && i === guesser() && r >= 0 && r < ROWS && c >= 0 && c < COLS && !occupied(r, c)) placeAt(r, c);
+        break;
+      }
+      case 'round2': if (S.phase === 'clue2' && i === g) { S.clue2 = cleanClue(d.clue); startRound2(); } break;
+      case 'reveal': if (S.phase === 'ready' && i === g) reveal(); break;
+      case 'next': if (S.phase === 'reveal') nextTurn(); break;
+      default: return;
+    }
+    save(); render();
+  }
+  function viewFor(i) {
+    const lobby = S.phase === 'setup';
+    const g = lobby ? -1 : giverIdx();
+    const phase = lobby ? 'lobby' : S.phase;
+    const isG = i === g;
+    return {
+      phase, you: i, turn: S.turn, total: lobby ? 0 : totalTurns(), giver: g,
+      order: S.order, gi: S.gi, step: S.step,
+      players: S.players.map(p => ({ name: p.name, color: p.color, score: p.score, online: !!p.online })),
+      markers: S.markers.map(m => ({ p: m.p, r: m.r, c: m.c, pts: phase === 'reveal' ? m.pts : null })),
+      clue1: phase === 'pick' ? '' : S.clue1, clue2: S.clue2,
+      target: S.target && (isG || phase === 'reveal') ? S.target : null,
+      card: isG && phase === 'pick' ? S.card : null,
+      result: phase === 'reveal' ? S.result : null,
+    };
+  }
+  function broadcast() {
+    conns.forEach((c, pid) => {
+      const i = S.players.findIndex(p => p.pid === pid);
+      if (i >= 0 && c.open) { try { c.send({ t: 'state', v: viewFor(i) }); } catch (e) {} }
+    });
+  }
+
+  /* ---------- table actions ---------- */
+  Object.assign(actions, {
+    menu() { ui.menu = true; ui.confirmNew = false; render(); },
+    closeMenu() { ui.menu = false; ui.rules = false; render(); },
+    rules() { ui.rules = true; render(); },
+    closeRules() { ui.rules = false; render(); },
+    newGame() {
+      if (!ui.confirmNew) { ui.confirmNew = true; render(); return; }
+      backToSetup(); ui.menu = false; ui.confirmNew = false; save(); render();
+    },
+    skipTurn() { nextTurn(); ui.menu = false; save(); render(); },
+    mode(el) {
+      const v = el.dataset.v; if (v === S.mode) return;
+      if (v === 'remote') { S.mode = 'remote'; S.players = []; startHost(); }
+      else { stopHost(); S.mode = 'local'; S.players = []; }
+      save(); render();
+    },
+    addPlayer() { if (S.setup.names.length < 10) { S.setup.names.push(''); save(); render(); const ins = document.querySelectorAll('.prow input'); if (ins.length) ins[ins.length - 1].focus(); } },
+    removePlayer(el) { if (S.setup.names.length > 2) { S.setup.names.splice(+el.dataset.i, 1); save(); render(); } },
+    kick(el) {
+      const i = +el.dataset.i, p = S.players[i]; if (!p) return;
+      const c = conns.get(p.pid);
+      if (c) { try { c.send({ t: 'reject', msg: 'Te quitaron de la sala.' }); } catch (e) {} setTimeout(() => { try { c.close(); } catch (e) {} }, 500); conns.delete(p.pid); }
+      S.players.splice(i, 1); save(); render();
+    },
+    rounds(el) { S.setup.rounds = +el.dataset.v; save(); render(); },
+    start() { remote() ? startRemote() : startLocal(); save(); render(); },
+    showCard() { S.phase = 'pick'; save(); render(); },
+    pickCard(el) { S.target = { ...S.card[+el.dataset.i] }; save(); render(); },
+    redraw() { S.card = drawCard(); S.target = null; save(); render(); },
+    hideCard() { if (!S.target) return; S.phase = 'guess'; S.step = 1; S.gi = 0; save(); render(); },
+    place() { if (!sel) return; placeAt(sel.r, sel.c); save(); render(); },
+    undo() {
+      if (!S.markers.length) return;
+      const last = S.markers[S.markers.length - 1];
+      if (last.step !== S.step && S.phase !== 'clue2') return;
+      S.markers.pop(); sel = null; ui.hint = '';
+      if (S.phase === 'clue2' || S.phase === 'ready') { S.phase = 'guess'; S.gi = S.order.length - 1; }
+      else S.gi--;
+      save(); render();
+    },
+    round2() { startRound2(); save(); render(); },
+    reveal() { reveal(); save(); render(); },
+    next() { nextTurn(); save(); render(); },
+    rematch() {
+      if (remote()) { startRemote(); }
+      else { const names = S.players.map(p => p.name), rounds = S.rounds; S = fresh(names); S.setup.rounds = rounds; startLocal(); }
+      save(); render();
+    },
+    toSetup() { backToSetup(); save(); render(); },
+  });
+  document.addEventListener('input', e => {
+    const t = e.target;
+    if (t.matches('.prow input')) {
+      S.setup.names[+t.dataset.i] = t.value;
+      const d = t.parentElement.querySelector('.dot'); if (d) d.textContent = initial(t.value || 'J');
+      save();
+    }
+    if (t.id === 'clue1in') { S.clue1 = t.value; save(); }
+    if (t.id === 'clue2in') { S.clue2 = t.value; save(); }
+  });
+
+  /* ---------- board ---------- */
+  const board = $('#board');
+  const cells = buildBoard(board);
   board.addEventListener('click', e => {
     const d = e.target.closest('.cell'); if (!d || S.phase !== 'guess') return;
     const r = +d.dataset.r, c = +d.dataset.c;
@@ -450,7 +1014,6 @@ input.text:focus { border-color: var(--ink); outline: none; }
     else { sel = (sel && sel.r === r && sel.c === c) ? null : { r, c }; ui.hint = ''; }
     renderBoard(); renderTray();
   });
-
   function fit() {
     const st = $('#stage'), W = st.clientWidth, H = st.clientHeight;
     const cell = Math.max(8, Math.floor(Math.min(W / 33, H / 17.95)));
@@ -459,44 +1022,14 @@ input.text:focus { border-color: var(--ink); outline: none; }
   }
   new ResizeObserver(fit).observe($('#stage'));
 
-  function frameEl(t, radius, cls) {
-    const f = document.createElement('div'); f.className = 'frame ' + cls;
-    const r0 = Math.max(0, t.r - radius), r1 = Math.min(ROWS - 1, t.r + radius);
-    const c0 = Math.max(0, t.c - radius), c1 = Math.min(COLS - 1, t.c + radius);
-    f.style.gridRow = `${r0 + 2} / ${r1 + 3}`; f.style.gridColumn = `${c0 + 2} / ${c1 + 3}`;
-    return f;
-  }
-
   function renderBoard() {
-    board.querySelectorAll('.pawn,.frame,.target-mark,.pts').forEach(n => n.remove());
-    board.querySelectorAll('.cell.sel,.cell.dim').forEach(n => n.classList.remove('sel', 'dim'));
-    if (!S.players.length) return;
-    S.markers.forEach((m, i) => {
-      const p = document.createElement('span');
-      p.className = 'pawn' + (i === ui.justPlaced ? ' drop' : '');
-      p.style.setProperty('--pc', S.players[m.p].color);
-      p.textContent = initial(S.players[m.p].name);
-      cells[m.r][m.c].appendChild(p);
-      if (S.phase === 'reveal') {
-        const b = document.createElement('span'); b.className = 'pts'; b.textContent = '+' + m.pts;
-        cells[m.r][m.c].appendChild(b);
-      }
+    if (!S.players.length || S.phase === 'setup') { drawBoard(board, cells, { players: [], markers: [] }); return; }
+    drawBoard(board, cells, {
+      players: S.players, markers: S.markers, drop: ui.justPlaced,
+      sel: S.phase === 'guess' ? sel : null, selPlayer: S.phase === 'guess' ? guesser() : null,
+      target: S.phase === 'reveal' ? S.target : null, reveal: S.phase === 'reveal',
     });
     ui.justPlaced = -1;
-    if (sel && S.phase === 'guess') {
-      const d = cells[sel.r][sel.c]; d.classList.add('sel');
-      const g = document.createElement('span'); g.className = 'pawn ghost';
-      g.style.setProperty('--pc', S.players[guesser()].color); g.textContent = initial(S.players[guesser()].name);
-      d.appendChild(g);
-    }
-    if (S.phase === 'reveal' && S.target) {
-      board.appendChild(frameEl(S.target, 2, 'outer'));
-      board.appendChild(frameEl(S.target, 1, ''));
-      const tm = document.createElement('span'); tm.className = 'target-mark';
-      cells[S.target.r][S.target.c].appendChild(tm);
-      for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++)
-        if (Math.max(Math.abs(r - S.target.r), Math.abs(c - S.target.c)) > 2) cells[r][c].classList.add('dim');
-    }
   }
 
   /* ---------- header ---------- */
@@ -507,7 +1040,8 @@ input.text:focus { border-color: var(--ink); outline: none; }
     $('#scores').innerHTML = !playing ? '' : S.players.map((p, i) => {
       const isG = i === giverIdx() && S.phase !== 'end';
       const isNow = S.phase === 'guess' && i === guesser();
-      return `<span class="chip${isNow ? ' now' : ''}">${dot(i)}${esc(p.name)}${isG ? ' <span class="tag">pista</span>' : ''} <b>${p.score}</b></span>`;
+      const off = remote() && !p.online;
+      return `<span class="chip${isNow ? ' now' : ''}${off ? ' off' : ''}" ${off ? 'title="Desconectado"' : ''}>${dot(i)}${esc(p.name)}${isG ? ' <span class="tag">pista</span>' : ''} <b>${p.score}</b></span>`;
     }).join('');
     $('#menuBtn').hidden = S.phase === 'setup';
   }
@@ -525,26 +1059,32 @@ input.text:focus { border-color: var(--ink); outline: none; }
       ? `<div class="eyebrow">Segunda pista de ${pname(g)}</div><div class="cluetext">«${esc(S.clue2.trim())}»<small>${first}</small></div>`
       : `<div class="eyebrow">Segunda pista de ${pname(g)}</div><div class="cluetext quiet">Escucha la pista de dos palabras.${first ? '<br>' + first : ''}</div>`;
   }
+  const offNote = i => remote() && !S.players[i].online ? ' <span class="net bad">desconectado</span>' : '';
 
   function renderTray() {
     const tray = $('#tray'), g = S.players.length ? giverIdx() : 0;
-    tray.hidden = ['setup', 'end', 'handoff', 'pick'].includes(S.phase);
+    const hiddenPhases = remote() ? ['setup', 'end'] : ['setup', 'end', 'handoff', 'pick'];
+    tray.hidden = hiddenPhases.includes(S.phase);
     if (tray.hidden) { tray.innerHTML = ''; return; }
-    if (S.phase === 'guess') {
-      const p = guesser();
-      const canUndo = S.gi > 0;
+    if (S.phase === 'pick') {
       tray.innerHTML = `
-        <div class="who">${dot(p)}<div><div class="eyebrow">Te toca</div><div class="big">${pname(p)}</div><div class="sub">Ficha ${S.step} de 2 · ${S.gi + 1}/${S.order.length}</div></div></div>
+        <div class="who">${dot(g)}<div><div class="eyebrow">Turno ${S.turn + 1} de ${totalTurns()}</div><div class="big">${pname(g)} está eligiendo su color</div><div class="sub">En su celular. Los demás, atentos a la pista.${offNote(g)}</div></div></div>`;
+    } else if (S.phase === 'guess') {
+      const p = guesser();
+      tray.innerHTML = `
+        <div class="who">${dot(p)}<div><div class="eyebrow">Te toca</div><div class="big">${pname(p)}</div><div class="sub">Ficha ${S.step} de 2 · ${S.gi + 1}/${S.order.length}${remote() ? ' · desde su celular o aquí' : ''}${offNote(p)}</div></div></div>
         <div class="clue">${clueBlock()}</div>
         <div class="preview">${sel
           ? `<span class="swatch" style="background:${COLORS[sel.r][sel.c]}"></span><span class="coord">${coord(sel)}</span>`
           : `<span class="hint ${ui.hint ? 'warn' : ''}">${ui.hint || 'Toca una casilla del tablero.'}</span>`}</div>
         <div class="btns">
-          <button class="ghost" data-action="undo" ${canUndo ? '' : 'disabled'}>Deshacer</button>
+          <button class="ghost" data-action="undo" ${S.gi > 0 ? '' : 'disabled'}>Deshacer</button>
           <button class="primary" data-action="place" ${sel ? '' : 'disabled'}>Colocar ficha</button>
         </div>`;
     } else if (S.phase === 'clue2') {
-      tray.innerHTML = `
+      tray.innerHTML = remote() ? `
+        <div class="who">${dot(g)}<div><div class="eyebrow">Segunda pista</div><div class="big">${pname(g)} está pensando</div><div class="sub">Dará una pista de hasta dos palabras.${offNote(g)}</div></div></div>
+        <div class="btns"><button class="ghost" data-action="undo">Deshacer</button></div>` : `
         <div class="who">${dot(g)}<div><div class="eyebrow">Segunda pista</div><div class="big">${pname(g)}</div><div class="sub">Mira las fichas y da una pista de hasta dos palabras.</div></div></div>
         <div class="peek" style="--peek:${COLORS[S.target.r][S.target.c]}">Mantén pulsado para ver tu color</div>
         <div class="clue"><input class="text" id="clue2in" maxlength="40" autocomplete="off" placeholder="Escríbela aquí (opcional)" value="${esc(S.clue2)}"></div>
@@ -570,62 +1110,82 @@ input.text:focus { border-color: var(--ink); outline: none; }
   }
 
   /* ---------- sheets ---------- */
-  const RULES = `
-    <ol class="rules">
-      <li>En cada turno una persona <b>da las pistas</b>. Le pasan el iPad, ve una tarjeta con 4 colores y elige uno en secreto.</li>
-      <li>Dice en voz alta una pista de <b>una palabra</b>. No vale nombrar colores ni decir filas, números o posiciones del tablero.</li>
-      <li>Por turnos, cada jugador toca la casilla que cree que es y coloca su ficha. Dos fichas no pueden ir en la misma casilla.</li>
-      <li>Luego da una segunda pista de <b>hasta dos palabras</b> y todos colocan una segunda ficha, en orden inverso.</li>
-      <li>Se revela el color con un marco de 3×3 a su alrededor.</li>
-    </ol>
-    <div class="scoring">
-      <span class="n">3</span><span>en la casilla exacta</span>
-      <span class="n">2</span><span>dentro del marco</span>
-      <span class="n">1</span><span>en el anillo que rodea al marco (línea punteada)</span>
-      <span class="n">+1</span><span>para quien da la pista por cada ficha dentro del marco</span>
-    </div>
-    <p>La partida termina cuando todos han dado pistas el número de vueltas elegido. Gana quien tenga más puntos.</p>`;
-
-  function refreshSetupDots() {
-    document.querySelectorAll('.prow').forEach((row, i) => {
-      const d = row.querySelector('.dot'); if (d) d.textContent = initial(S.setup.names[i] || `J${i + 1}`);
-    });
+  function netLine() {
+    if (net.status === 'open') return `<span class="net ok">Sala abierta</span>`;
+    if (net.status === 'error') return `<span class="net bad">${esc(net.error)}</span>`;
+    return `<span class="net bad">${esc(net.error || 'Abriendo la sala…')}</span>`;
+  }
+  function qrSVG(text) {
+    if (typeof qrcode === 'undefined') return '';
+    try { const q = qrcode(0, 'M'); q.addData(text); q.make(); return q.createSvgTag({ cellSize: 4, margin: 0, scalable: true }); } catch (e) { return ''; }
   }
 
   function sheetHTML() {
-    if (ui.rules) return ['scrim', `<h2>Cómo se juega</h2>${RULES}<div class="row end"><button class="primary" data-action="closeRules">Entendido</button></div>`];
-    if (ui.menu) return ['scrim', `
+    if (ui.rules) return ['scrim', '', `<h2>Cómo se juega</h2>${RULES}<div class="row end"><button class="primary" data-action="closeRules">Entendido</button></div>`];
+    if (ui.menu) return ['scrim', '', `
       <h2>Menú</h2>
       <div class="row"><button class="primary" data-action="closeMenu">Seguir jugando</button><button class="ghost" data-action="rules">Cómo se juega</button></div>
-      <div class="row"><button class="ghost" data-action="newGame">${ui.confirmNew ? 'Toca otra vez para borrar esta partida' : 'Nueva partida'}</button></div>
+      ${S.phase !== 'end' ? '<div class="row"><button class="ghost" data-action="skipTurn">Saltar este turno</button></div>' : ''}
+      <div class="row"><button class="ghost" data-action="newGame">${ui.confirmNew ? 'Toca otra vez para terminar esta partida' : 'Nueva partida'}</button></div>
+      ${remote() ? `<p class="sub">Sala <b>${esc(S.room)}</b> · ${netLine()}<br>Si alguien se desconecta, que vuelva a abrir el enlace y entre con el mismo nombre.</p><p class="url">${esc(joinURL())}</p>` : ''}
       <p class="sub">La partida se guarda sola en este iPad. Si cierras la página, la encontrarás donde la dejaste.</p>`];
     const g = S.players.length ? giverIdx() : 0;
     switch (S.phase) {
       case 'setup': {
-        const n = S.setup.names;
-        return ['scrim', `
-          <h2>Pistas de Color</h2>
-          <p class="lead">Una persona ve un color en secreto y da pistas. Los demás intentan encontrarlo entre 480 casillas. Se juega pasándose el iPad.</p>
-          <h3>Jugadores</h3>
-          <div class="players">${n.map((name, i) => `
-            <div class="prow"><span class="dot" style="--pc:${PCOLORS[i]}">${esc(initial(name || 'J' + (i + 1)))}</span>
-              <input class="text" id="p${i}" data-i="${i}" maxlength="16" autocomplete="off" placeholder="Jugador ${i + 1}" value="${esc(name)}">
-              <button class="x" data-action="removePlayer" data-i="${i}" aria-label="Quitar jugador" ${n.length <= 2 ? 'disabled' : ''}>×</button></div>`).join('')}
-          </div>
-          ${n.length < 10 ? '<div><button class="linkbtn" data-action="addPlayer">+ Añadir jugador</button></div>' : ''}
-          <h3>¿Cuántas veces da pistas cada persona?</h3>
+        const modeSeg = `<div class="seg" role="group" aria-label="Modo de juego">
+            <button data-action="mode" data-v="local" aria-pressed="${!remote()}">Todos en este iPad</button>
+            <button data-action="mode" data-v="remote" aria-pressed="${remote()}">Cada uno con su celular</button></div>`;
+        const roundsSeg = n => `<h3>¿Cuántas veces da pistas cada persona?</h3>
           <div><div class="seg" role="group">${[1, 2, 3].map(v => `<button data-action="rounds" data-v="${v}" aria-pressed="${S.setup.rounds === v}">${v}</button>`).join('')}</div>
-          <span class="sub">&nbsp; ${n.length * S.setup.rounds} turnos en total</span></div>
+          <span class="sub">&nbsp; ${n * S.setup.rounds} turnos en total</span></div>`;
+        if (remote()) {
+          const url = joinURL(), n = S.players.length;
+          return ['scrim', 'wide', `
+            <h2>Pistas de Color</h2>
+            ${modeSeg}
+            <div class="lobby">
+              <div class="qr" aria-label="Código QR para entrar">${net.status === 'open' ? qrSVG(url) : ''}</div>
+              <div class="stack">
+                <div class="eyebrow">Código de la sala</div>
+                <div class="roomcode">${esc(S.room || '····')}</div>
+                <p>Escaneen el código QR con la cámara del celular, o abran esta dirección y escriban el código:</p>
+                <div class="url">${esc(url)}</div>
+                ${netLine()}
+              </div>
+            </div>
+            <h3>Jugadores conectados</h3>
+            <div class="players">${n ? S.players.map((p, i) => `
+              <div class="prow">${dotFor(p)}<span class="nm">${esc(p.name)}</span>${p.online ? '<span class="net ok">listo</span>' : '<span class="net bad">desconectado</span>'}
+                <button class="x" data-action="kick" data-i="${i}" aria-label="Quitar a ${esc(p.name)}">×</button></div>`).join('')
+              : '<div class="empty">Todavía no ha entrado nadie. Cuando alguien entre, aparecerá aquí.</div>'}
+            </div>
+            ${roundsSeg(n)}
+            <div class="row end"><button class="linkbtn" data-action="rules">Cómo se juega</button><button class="primary" data-action="start" ${n >= 2 ? '' : 'disabled'}>${n >= 2 ? 'Empezar partida' : 'Faltan jugadores'}</button></div>`];
+        }
+        const names = S.setup.names;
+        return ['scrim', '', `
+          <h2>Pistas de Color</h2>
+          <p class="lead">Una persona ve un color en secreto y da pistas. Los demás intentan encontrarlo entre 480 casillas.</p>
+          ${modeSeg}
+          <h3>Jugadores</h3>
+          <div class="players">${names.map((name, i) => `
+            <div class="prow"><span class="dot" style="--pc:${PCOLORS[i]}">${esc(initial(name || 'J'))}</span>
+              <input class="text" id="p${i}" data-i="${i}" maxlength="16" autocomplete="off" placeholder="Jugador ${i + 1}" value="${esc(name)}">
+              <button class="x" data-action="removePlayer" data-i="${i}" aria-label="Quitar jugador" ${names.length <= 2 ? 'disabled' : ''}>×</button></div>`).join('')}
+          </div>
+          ${names.length < 10 ? '<div><button class="linkbtn" data-action="addPlayer">+ Añadir jugador</button></div>' : ''}
+          ${roundsSeg(names.length)}
           <div class="row end"><button class="linkbtn" data-action="rules">Cómo se juega</button><button class="primary" data-action="start">Empezar partida</button></div>`];
       }
       case 'handoff':
-        return ['private', `
+        return ['private', '', `
           <div class="eyebrow">Turno ${S.turn + 1} de ${totalTurns()}</div>
           <div class="who">${dot(g)}<h2>Le toca dar la pista a ${pname(g)}</h2></div>
           <p class="lead">Pásale el iPad a ${pname(g)}. Los demás, no miren la pantalla hasta que diga la pista.</p>
           <div class="row end"><button class="primary" data-action="showCard">Soy ${pname(g)}: ver mi tarjeta</button></div>`];
       case 'pick':
-        return ['private', `
+        if (remote()) return null;
+        return ['private', '', `
           <h2>Elige tu color secreto</h2>
           <p>Toca uno de los cuatro. Luego piensa una pista de una palabra, sin nombrar colores.</p>
           <div class="cardpick">${S.card.map((p, i) => {
@@ -639,11 +1199,13 @@ input.text:focus { border-color: var(--ink); outline: none; }
       case 'end': {
         const ranked = S.players.map((p, i) => ({ ...p, i })).sort((a, b) => b.score - a.score);
         const top = ranked[0].score, winners = ranked.filter(p => p.score === top);
-        const title = winners.length > 1 ? `¡Empate entre ${winners.slice(0, -1).map(w => esc(w.name)).join(', ')} y ${esc(winners[winners.length - 1].name)}!` : `¡Gana ${esc(winners[0].name)}!`;
-        return ['scrim', `
+        const title = winners.length > 1
+          ? `¡Empate entre ${winners.slice(0, -1).map(w => esc(w.name)).join(', ')} y ${esc(winners[winners.length - 1].name)}!`
+          : `¡Gana ${esc(winners[0].name)}!`;
+        return ['scrim', '', `
           <div class="eyebrow">Fin de la partida</div>
           <h2>${title}</h2>
-          <ol class="rank">${ranked.map((p, k) => `<li class="${p.score === top ? 'first' : ''}"><span class="place">${ranked.findIndex(q => q.score === p.score) + 1}</span>${dot(p.i)}<span class="nm">${esc(p.name)}</span><b>${p.score}</b></li>`).join('')}</ol>
+          <ol class="rank">${ranked.map(p => `<li class="${p.score === top ? 'first' : ''}"><span class="place">${ranked.findIndex(q => q.score === p.score) + 1}</span>${dot(p.i)}<span class="nm">${esc(p.name)}</span><b>${p.score}</b></li>`).join('')}</ol>
           <div class="row end"><button class="ghost" data-action="toSetup">Cambiar jugadores</button><button class="primary" data-action="rematch">Jugar otra vez</button></div>`];
       }
     }
@@ -653,25 +1215,37 @@ input.text:focus { border-color: var(--ink); outline: none; }
   function renderSheet() {
     const sh = $('#sheet'), res = sheetHTML();
     if (!res) { sh.hidden = true; sh.innerHTML = ''; return; }
+    const active = document.activeElement, activeId = active && active.id;
     sh.className = 'sheet ' + res[0];
-    sh.innerHTML = `<div class="card" role="dialog" aria-modal="true">${res[1]}</div>`;
+    sh.innerHTML = `<div class="card ${res[1]}" role="dialog" aria-modal="true">${res[2]}</div>`;
     sh.hidden = false;
+    if (activeId) { const el = document.getElementById(activeId); if (el && el.tagName === 'INPUT') el.focus(); }
   }
 
-  function render() { renderHeader(); renderBoard(); renderTray(); renderSheet(); }
+  function render() {
+    renderHeader(); renderBoard(); renderTray(); renderSheet();
+    if (remote()) broadcast();
+  }
 
-  /* ---------- keep the screen on while playing ---------- */
-  let lock = null;
-  async function keepAwake() { try { if ('wakeLock' in navigator && !lock) { lock = await navigator.wakeLock.request('screen'); lock.addEventListener('release', () => { lock = null; }); } } catch (e) {} }
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S && S.phase !== 'setup') keepAwake(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || !S) return;
+    if (S.phase !== 'setup') keepAwake();
+    if (remote() && peer && !peer.destroyed && peer.disconnected) peer.reconnect();
+  });
 
   /* ---------- boot ---------- */
   function start(data) {
     S = (data && data.state) || load() || fresh();
-    buildBoard(); fit(); render();
+    if (!S.mode) S.mode = 'local';
+    S.players.forEach(p => { p.online = false; });
+    fit();
+    if (remote()) startHost();
+    render();
     if (S.phase !== 'setup') keepAwake();
   }
   window.claude?.hot?.snapshot?.(() => ({ state: S }));
   window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
 })();
 </script>
+</body>
+</html>
