@@ -87,6 +87,11 @@ header { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; }
   font: 700 14px/1 var(--body); color: var(--ink); background: var(--surface);
   border: 0; border-radius: 999px; padding: 9px 14px; cursor: pointer; min-height: 36px;
 }
+.lang { display: inline-flex; background: var(--surface); border-radius: 999px; padding: 3px; gap: 2px; flex: none; }
+.card .lang, #phPanel .lang { background: var(--bg); }
+.lang button { border: 0; background: transparent; color: var(--ink); font: 700 13px/1 var(--body); padding: 8px 10px; border-radius: 999px; cursor: pointer; min-height: 30px; }
+.lang button[aria-pressed="true"] { background: var(--ink); color: var(--on-ink); }
+.titlerow { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 
 /* ---------- board ---------- */
 #stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
@@ -233,7 +238,7 @@ input.text:focus { border-color: var(--ink); outline: none; }
 .choice p { font-size: 15px; }
 .choice button.primary { margin-top: auto; }
 .back { margin-right: auto; }
-#joincode { text-transform: uppercase; letter-spacing: 0.2em; }
+#joincode, #jcode { text-transform: uppercase; letter-spacing: 0.2em; }
 
 .lobby { display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: center; }
 .qr { width: 180px; height: 180px; background: #fff; border-radius: 14px; padding: 10px; flex: none; }
@@ -327,6 +332,7 @@ input.text:focus { border-color: var(--ink); outline: none; }
   .pawn.drop, .frame, .timer.low, .buzz.go > div { animation: none; }
 }
 </style>
+<script src="config.js"></script>
 <script src="vendor/peerjs.min.js"></script>
 <script src="vendor/qrcode.js"></script>
 </head>
@@ -335,20 +341,21 @@ input.text:focus { border-color: var(--ink); outline: none; }
   <header>
     <div class="brand">
       <div class="logo" aria-hidden="true"><i style="background:#e0533d"></i><i style="background:#e8b52c"></i><i style="background:#2f8f6a"></i><i style="background:#3b5bd6"></i></div>
-      <h1>Pistas de Color</h1>
+      <h1 id="brandName">Pistas de Color</h1>
     </div>
     <span class="turninfo" id="turninfo"></span>
     <div class="scores" id="scores"></div>
+    <span id="langSlot"></span>
     <button class="iconbtn" data-action="menu" id="menuBtn">Menú</button>
   </header>
-  <main id="stage"><div id="board" class="board" aria-label="Tablero de colores"></div></main>
+  <main id="stage"><div id="board" class="board"></div></main>
   <section id="tray" class="tray" aria-live="polite"></section>
 </div>
 
 <div id="phone" hidden>
   <div class="ph-head" id="phHead"></div>
   <section id="phPanel" class="tray" aria-live="polite"></section>
-  <div class="ph-board" id="phBoardWrap" hidden><div id="phBoard" class="board" aria-label="Tablero de colores"></div></div>
+  <div class="ph-board" id="phBoardWrap" hidden><div id="phBoard" class="board"></div></div>
 </div>
 
 <div id="sheet" class="sheet" hidden></div>
@@ -358,25 +365,227 @@ input.text:focus { border-color: var(--ink); outline: none; }
 <script>
 (() => {
   const COLS = 30, ROWS = 16, LETTERS = 'ABCDEFGHIJKLMNOP';
-  const KEY = 'pistas-de-color-v1', PHONE_KEY = 'pistas-de-color-celular';
+  const KEY = 'pistas-de-color-v1', PHONE_KEY = 'pistas-de-color-celular', LANG_KEY = 'pistas-de-color-idioma';
   const PCOLORS = ['#d7263d', '#1f4fd1', '#178a4c', '#7b3fe4', '#e46a12', '#0b7c86', '#d6338a', '#7a5523', '#36404f', '#b8860b'];
   const ROOM_LETTERS = 'BCDFGHJKLMNPQRSTVWXZ';
   const PREFIX = 'pistasdecolor-';
   const TIMER_OPTIONS = [0, 30, 60, 90];
-  const BUZZ_TEXTS = ['¡Apúrate!', '¡Tic, tac, tic, tac!', '¡Hoy, no mañana!', '¡Que se enfría!', '¡Despierta!', '¡Dale, dale, dale!', '¡El tablero no muerde!', '¡Ya casi es Navidad!'];
   const BUZZ_PHASES = ['pick', 'guess', 'clue2', 'ready'];
+  const CONFIG = window.PISTAS_CONFIG || {};
 
-  /* ---------- connection settings (overridable for local testing) ---------- */
+  /* ---------- language ---------- */
+  const I18N = {
+    es: {
+      title: 'Pistas de Color',
+      tagline: 'Una persona ve un color en secreto y da pistas. Los demás intentan encontrarlo entre 480 casillas.',
+      createTitle: 'Crear una partida', createDesc: 'Elige cómo jugar: todos en un iPad, el iPad como tablero con celulares, o solo con celulares.', createBtn: 'Crear partida',
+      joinTitle: 'Entrar a una sala', roomCode: 'Código de la sala', yourName: 'Tu nombre', namePh: 'Por ejemplo: Ana', hostNamePh: 'Por ejemplo: Mamá', enter: 'Entrar',
+      howTo: 'Cómo se juega', back: '← Volver', gameMode: 'Modo de juego',
+      modeLocal: 'Un solo iPad', modeRemote: 'iPad + celulares', modePhones: 'Solo celulares',
+      phonesLead: 'Sin iPad: este celular abre la sala y también juega. Los demás entran escaneando el código QR que aparecerá en tu pantalla, o escribiendo el código desde la página de inicio, aunque estén en otro país.',
+      keepOn: 'Mantén tu pantalla encendida durante la partida: tu celular es la sala.',
+      createRoom: 'Crear sala', needName: 'Escribe tu nombre para crear la sala.',
+      scanLead: 'Escaneen el código QR con la cámara del celular, o abran esta dirección y escriban el código:',
+      connectedPlayers: 'Jugadores conectados', ready: 'listo', offline: 'desconectado',
+      nobodyYet: 'Todavía no ha entrado nadie. Cuando alguien entre, aparecerá aquí.',
+      roundsQ: '¿Cuántas veces da pistas cada persona?', turnsTotal: '{n} turnos en total',
+      timerQ: 'Tiempo para colocar cada ficha', noLimit: 'Sin límite',
+      start: 'Empezar partida', needPlayers: 'Faltan jugadores', players: 'Jugadores', playersN: 'Jugadores ({n})', playerN: 'Jugador {n}',
+      addPlayer: '+ Añadir jugador', removePlayer: 'Quitar jugador', removeX: 'Quitar a {name}',
+      roomOpen: 'Sala abierta', opening: 'Abriendo la sala…', noServer: 'Sin conexión con el servidor. Reintentando…',
+      cantHostHere: 'No se puede abrir la sala desde aquí. Abre el juego desde su página web.',
+      browserNo: 'Este navegador no permite jugar con celulares. Usa Safari o Chrome.',
+      menu: 'Menú', keepPlaying: 'Seguir jugando', skipTurn: 'Saltar este turno', newGame: 'Nueva partida',
+      confirmEnd: 'Toca otra vez para terminar esta partida', room: 'Sala {room}',
+      reconnectHint: 'Si alguien se desconecta, que vuelva a abrir el enlace y entre con el mismo nombre.',
+      autosave: 'La partida se guarda sola en este iPad. Si cierras la página, la encontrarás donde la dejaste.',
+      turnOf: 'Turno {n} de {total}', roundOf: 'Vuelta {n} de {total}', clueTag: 'pista',
+      howGoing: 'Así van', finalResult: 'Resultado final', close: 'Cerrar', you: ' (tú)',
+      handoffTitle: 'Le toca dar la pista a {name}', handoffLead: 'Pásale el iPad a {name}. Los demás, no miren la pantalla hasta que diga la pista.', iAm: 'Soy {name}: ver mi tarjeta',
+      pickTitle: 'Elige tu color secreto', pickLead: 'Toca uno de los cuatro. Luego piensa una pista de una palabra, sin nombrar colores.',
+      pickLeadPhone: 'Que nadie vea tu pantalla. Toca uno de los cuatro.', redraw: 'Sacar otra tarjeta',
+      clue1Label: 'Tu pista (opcional: se mostrará a todos)', clue1LabelPhone: 'Tu pista de una palabra (si juegan a distancia, escríbela para que todos la vean)',
+      cluePh: 'Por ejemplo: aguacate', hideStart: 'Listo: ocultar y empezar', startGuessing: 'Listo: empezar a adivinar',
+      yourTurn: 'Te toca', markerOf: 'Ficha {n} de 2', fromPhoneOrHere: 'desde su celular o aquí',
+      tapCell: 'Toca una casilla del tablero.', occupied: 'Esa casilla ya tiene una ficha. Elige otra.',
+      undo: 'Deshacer', place: 'Colocar ficha',
+      clueOf: 'Pista de {name}', listen1: 'Escucha la pista de una palabra.', clue2Of: 'Segunda pista de {name}', listen2: 'Escucha la pista de dos palabras.',
+      firstWas: 'Primera: «{clue}»', quote: '«{clue}»',
+      secondClue: 'Segunda pista', isThinking: '{name} está pensando', willGive2: 'Dará una pista de hasta dos palabras.',
+      look2: 'Mira las fichas y da una pista de hasta dos palabras.', holdPeek: 'Mantén pulsado para ver tu color',
+      clue2Ph: 'Escríbela aquí (opcional)', startRound2: 'Empezar segunda ronda', upTo2: 'Hasta dos palabras',
+      allPlaced: 'Todas las fichas están puestas', revealYour: '{name}, revela tu color', reveal: 'Revelar', revealMine: 'Revelar mi color',
+      waitReveal: 'Esperando a que {name} revele su color.', itWas: 'Era', next: 'Siguiente turno', seeFinal: 'Ver resultado final',
+      choosing: '{name} está eligiendo su color', choosingSub: 'En su celular. Los demás, atentos a la pista.',
+      endOf: 'Fin de la partida', tieBetween: '¡Empate entre {names}!', and: ' y ', wins: '¡Gana {name}!', tie: '¡Empate!',
+      changePlayers: 'Cambiar jugadores', playAgain: 'Jugar otra vez', backToRoom: 'Volver a la sala',
+      canPlayAgainHost: '{name} puede empezar otra partida.', canPlayAgainIpad: 'Pueden jugar otra vez desde el iPad.',
+      understood: 'Entendido', joinGame: 'Entrar a la partida', joinLead: 'Escribe el código de la sala y tu nombre.',
+      codeLen: 'El código de la sala tiene 4 letras.', typeName: 'Escribe tu nombre.',
+      enteringRoom: 'Entrando a la sala {code}…', connecting: 'Conectando. Esto tarda unos segundos.', changeCode: 'Cambiar código o nombre',
+      notFound: 'No encontramos la sala {code}. Revisa el código y que la sala siga abierta.',
+      noLoad: 'No se pudo cargar la conexión. Revisa el internet y recarga la página.',
+      browserPhone: 'Este navegador no puede conectarse. Prueba con Safari o Chrome.',
+      noDirect: 'Encontramos la sala, pero no logramos conectarnos con ella. Suele pasar entre casas o redes distintas. Seguimos intentando; si no entra, quien publicó el juego debe activar el servidor de conexión (ver config.js).',
+      connected: 'Conectado', connectingShort: 'Conectando…', zoomOut: 'Alejar tablero', zoomIn: 'Acercar tablero', seeScores: 'Ver puntajes',
+      roomReady: 'Tu sala está lista', roomReadyLead: 'Que los demás escaneen el código con la cámara de su celular, o abran la dirección y escriban el código.',
+      waitingSomeone: 'Esperando a que entre alguien más…', readyName: '¡Listo, {name}!',
+      waitHost: 'Esperando a que {name} empiece la partida.', waitIpad: 'Esperando a que empiece la partida en el iPad.',
+      missing: '¿Falta alguien? Que entre con este código:', leaveRoom: 'Salir de la sala', nowPlaying: 'Turno de',
+      wonClue: 'Ganaste por tus pistas', won: 'Ganaste', hurry: 'Apurar a {name}',
+      pressing: '{name} te está presionando', pressesTo: '{from} presiona a {to}', pressed: '{from} presionó a {to}',
+      timeUp: 'Se acabó el tiempo de {name}', roomClosed: 'La sala se cerró.',
+      rejStarted: 'La partida ya empezó. Podrás entrar en la siguiente.', rejFull: 'La sala está llena: el máximo es 10 jugadores.',
+      rejKicked: 'Te quitaron de la sala.', rejDefault: 'No puedes entrar a esta sala.',
+      open: 'abierta', endGameBack: 'Terminar partida y volver a la sala', confirmEndPhone: 'Toca otra vez para terminar la partida',
+      closeRoom: 'Cerrar la sala', confirmClose: 'Toca otra vez: todos saldrán de la sala',
+      board: 'Tablero de colores', qr: 'Código QR para entrar', pts: '{n} pts', language: 'Idioma',
+      buzz: ['¡Apúrate!', '¡Tic, tac, tic, tac!', '¡Hoy, no mañana!', '¡Que se enfría!', '¡Despierta!', '¡Dale, dale, dale!', '¡El tablero no muerde!', '¡Ya casi es Navidad!'],
+      rules: `
+        <ol class="rules">
+          <li>En cada turno una persona <b>da las pistas</b>. Ve una tarjeta con 4 colores y elige uno en secreto.</li>
+          <li>Dice en voz alta una pista de <b>una palabra</b>. No vale nombrar colores ni decir filas, números o posiciones del tablero.</li>
+          <li>Por turnos, cada jugador elige la casilla que cree que es y coloca su ficha. Dos fichas no pueden ir en la misma casilla.</li>
+          <li>Luego da una segunda pista de <b>hasta dos palabras</b> y todos colocan una segunda ficha, en orden inverso.</li>
+          <li>Se revela el color con un marco de 3×3 a su alrededor.</li>
+        </ol>
+        <div class="scoring">
+          <span class="n">3</span><span>en la casilla exacta</span>
+          <span class="n">2</span><span>dentro del marco</span>
+          <span class="n">1</span><span>en el anillo que rodea al marco (línea punteada)</span>
+          <span class="n">+1</span><span>para quien da la pista por cada ficha dentro del marco</span>
+        </div>
+        <p>Si juegan con tiempo y se acaba antes de colocar la ficha, ese jugador pierde esa ficha. Con el botón <b>Apurar</b> pueden presionar, con sonido, a quien está tardando.</p>
+        <p>¿Juegan a distancia? Conéctense en una videollamada y escriban las pistas para que salgan en todas las pantallas.</p>
+        <p>La partida termina cuando todos han dado pistas el número de vueltas elegido. Gana quien tenga más puntos.</p>`,
+    },
+    en: {
+      title: 'Color Clues',
+      tagline: 'One person sees a secret color and gives clues. Everyone else tries to find it among 480 squares.',
+      createTitle: 'Create a game', createDesc: 'Choose how to play: everyone on one iPad, the iPad as the board with phones, or phones only.', createBtn: 'Create game',
+      joinTitle: 'Join a room', roomCode: 'Room code', yourName: 'Your name', namePh: 'For example: Ana', hostNamePh: 'For example: Mom', enter: 'Join',
+      howTo: 'How to play', back: '← Back', gameMode: 'Game mode',
+      modeLocal: 'One iPad', modeRemote: 'iPad + phones', modePhones: 'Phones only',
+      phonesLead: 'No iPad needed: this phone opens the room and also plays. Others join by scanning the QR code on your screen, or by typing the code on the home page, even from another country.',
+      keepOn: 'Keep your screen on during the game: your phone is the room.',
+      createRoom: 'Create room', needName: 'Type your name to create the room.',
+      scanLead: 'Scan the QR code with your phone camera, or open this address and type the code:',
+      connectedPlayers: 'Connected players', ready: 'ready', offline: 'offline',
+      nobodyYet: 'Nobody has joined yet. Players will show up here.',
+      roundsQ: 'How many times does each person give clues?', turnsTotal: '{n} turns in total',
+      timerQ: 'Time to place each marker', noLimit: 'No limit',
+      start: 'Start game', needPlayers: 'Need more players', players: 'Players', playersN: 'Players ({n})', playerN: 'Player {n}',
+      addPlayer: '+ Add player', removePlayer: 'Remove player', removeX: 'Remove {name}',
+      roomOpen: 'Room open', opening: 'Opening the room…', noServer: 'No connection to the server. Retrying…',
+      cantHostHere: 'A room can’t be opened from here. Open the game from its web page.',
+      browserNo: 'This browser can’t play with phones. Use Safari or Chrome.',
+      menu: 'Menu', keepPlaying: 'Keep playing', skipTurn: 'Skip this turn', newGame: 'New game',
+      confirmEnd: 'Tap again to end this game', room: 'Room {room}',
+      reconnectHint: 'If someone drops out, they can open the link again and join with the same name.',
+      autosave: 'The game saves itself on this iPad. If you close the page, you’ll find it where you left off.',
+      turnOf: 'Turn {n} of {total}', roundOf: 'Round {n} of {total}', clueTag: 'clue',
+      howGoing: 'Standings', finalResult: 'Final result', close: 'Close', you: ' (you)',
+      handoffTitle: '{name} gives the clue', handoffLead: 'Hand the iPad to {name}. Everyone else, don’t look until the clue is given.', iAm: 'I’m {name}: show my card',
+      pickTitle: 'Pick your secret color', pickLead: 'Tap one of the four. Then think of a one-word clue without naming colors.',
+      pickLeadPhone: 'Don’t let anyone see your screen. Tap one of the four.', redraw: 'Draw another card',
+      clue1Label: 'Your clue (optional: everyone will see it)', clue1LabelPhone: 'Your one-word clue (if you’re playing remotely, type it so everyone sees it)',
+      cluePh: 'For example: avocado', hideStart: 'Done: hide and start', startGuessing: 'Done: start guessing',
+      yourTurn: 'Your turn', markerOf: 'Marker {n} of 2', fromPhoneOrHere: 'from their phone or here',
+      tapCell: 'Tap a square on the board.', occupied: 'That square already has a marker. Pick another one.',
+      undo: 'Undo', place: 'Place marker',
+      clueOf: '{name}’s clue', listen1: 'Listen for the one-word clue.', clue2Of: '{name}’s second clue', listen2: 'Listen for the two-word clue.',
+      firstWas: 'First: “{clue}”', quote: '“{clue}”',
+      secondClue: 'Second clue', isThinking: '{name} is thinking', willGive2: 'They’ll give a clue of up to two words.',
+      look2: 'Look at the markers and give a clue of up to two words.', holdPeek: 'Press and hold to see your color',
+      clue2Ph: 'Type it here (optional)', startRound2: 'Start second round', upTo2: 'Up to two words',
+      allPlaced: 'All markers are placed', revealYour: '{name}, reveal your color', reveal: 'Reveal', revealMine: 'Reveal my color',
+      waitReveal: 'Waiting for {name} to reveal the color.', itWas: 'It was', next: 'Next turn', seeFinal: 'See final result',
+      choosing: '{name} is picking a color', choosingSub: 'On their phone. Everyone else, listen for the clue.',
+      endOf: 'Game over', tieBetween: 'It’s a tie between {names}!', and: ' and ', wins: '{name} wins!', tie: 'It’s a tie!',
+      changePlayers: 'Change players', playAgain: 'Play again', backToRoom: 'Back to the room',
+      canPlayAgainHost: '{name} can start another game.', canPlayAgainIpad: 'You can play again from the iPad.',
+      understood: 'Got it', joinGame: 'Join the game', joinLead: 'Type the room code and your name.',
+      codeLen: 'The room code has 4 letters.', typeName: 'Type your name.',
+      enteringRoom: 'Joining room {code}…', connecting: 'Connecting. This takes a few seconds.', changeCode: 'Change code or name',
+      notFound: 'We couldn’t find room {code}. Check the code and that the room is still open.',
+      noLoad: 'The connection couldn’t load. Check your internet and reload the page.',
+      browserPhone: 'This browser can’t connect. Try Safari or Chrome.',
+      noDirect: 'We found the room but couldn’t connect to it. This often happens between different homes or networks. We’ll keep trying; if it doesn’t work, whoever published the game needs to turn on the relay server (see config.js).',
+      connected: 'Connected', connectingShort: 'Connecting…', zoomOut: 'Zoom out', zoomIn: 'Zoom in', seeScores: 'See scores',
+      roomReady: 'Your room is ready', roomReadyLead: 'Others can scan the code with their phone camera, or open the address and type the code.',
+      waitingSomeone: 'Waiting for someone else to join…', readyName: 'You’re in, {name}!',
+      waitHost: 'Waiting for {name} to start the game.', waitIpad: 'Waiting for the game to start on the iPad.',
+      missing: 'Someone missing? They can join with this code:', leaveRoom: 'Leave the room', nowPlaying: 'Now playing',
+      wonClue: 'You earned for your clues', won: 'You earned', hurry: 'Hurry {name}',
+      pressing: '{name} is rushing you', pressesTo: '{from} is rushing {to}', pressed: '{from} rushed {to}',
+      timeUp: '{name} ran out of time', roomClosed: 'The room was closed.',
+      rejStarted: 'The game has already started. You can join the next one.', rejFull: 'The room is full: 10 players max.',
+      rejKicked: 'You were removed from the room.', rejDefault: 'You can’t join this room.',
+      open: 'open', endGameBack: 'End game and return to the room', confirmEndPhone: 'Tap again to end the game',
+      closeRoom: 'Close the room', confirmClose: 'Tap again: everyone will leave the room',
+      board: 'Color board', qr: 'QR code to join', pts: '{n} pts', language: 'Language',
+      buzz: ['Hurry up!', 'Tick, tock, tick, tock!', 'Today, not tomorrow!', 'It’s getting cold!', 'Wake up!', 'Go, go, go!', 'The board doesn’t bite!', 'Christmas is almost here!'],
+      rules: `
+        <ol class="rules">
+          <li>Each turn, one person is the <b>cue giver</b>. They see a card with 4 colors and secretly pick one.</li>
+          <li>They say a <b>one-word</b> clue out loud. No color names, and no rows, numbers or board positions.</li>
+          <li>Taking turns, each player picks the square they think it is and places a marker. Two markers can’t share a square.</li>
+          <li>Then the cue giver gives a second clue of <b>up to two words</b> and everyone places a second marker, in reverse order.</li>
+          <li>The color is revealed with a 3×3 frame around it.</li>
+        </ol>
+        <div class="scoring">
+          <span class="n">3</span><span>on the exact square</span>
+          <span class="n">2</span><span>inside the frame</span>
+          <span class="n">1</span><span>in the ring around the frame (dashed line)</span>
+          <span class="n">+1</span><span>to the cue giver for each marker inside the frame</span>
+        </div>
+        <p>With a timer, if it runs out before you place your marker, you lose that marker. The <b>Hurry</b> button lets you rush whoever is taking too long, with sound.</p>
+        <p>Playing remotely? Get on a video call and type the clues so they show on every screen.</p>
+        <p>The game ends when everyone has given clues the chosen number of times. Most points wins.</p>`,
+    },
+  };
+  let LANG = (() => {
+    try { const v = localStorage.getItem(LANG_KEY); if (v === 'es' || v === 'en') return v; } catch (e) {}
+    return /^es\b/i.test(navigator.language || '') ? 'es' : 'en';
+  })();
+  function t(key, vars) {
+    let s = I18N[LANG][key] ?? I18N.es[key] ?? key;
+    if (vars && typeof s === 'string') s = s.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? '');
+    return s;
+  }
+  const langHTML = () => `<div class="lang" role="group" aria-label="${t('language')}">
+      <button data-action="setLang" data-v="es" aria-pressed="${LANG === 'es'}" lang="es">ES</button>
+      <button data-action="setLang" data-v="en" aria-pressed="${LANG === 'en'}" lang="en">EN</button></div>`;
+  let rerender = () => {};
+  function applyLang() {
+    document.documentElement.lang = LANG;
+    document.title = t('title');
+  }
+  applyLang();
+
+  /* ---------- connection settings ---------- */
   const params = new URLSearchParams(location.search);
   const TEST_KEYS = ['peerhost', 'peerport', 'peerpath', 'peersecure'];
   const PEER_OPTS = (() => {
     const o = { debug: 0, config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:global.stun.twilio.com:3478' }] } };
-    if (params.get('peerhost')) {
+    if (params.get('peerhost')) {   // local testing only
       o.host = params.get('peerhost'); o.port = +params.get('peerport') || 9000;
       o.path = params.get('peerpath') || '/'; o.secure = params.get('peersecure') === '1';
       o.config = { iceServers: [] };
     }
     return o;
+  })();
+  // A TURN relay (config.js) lets players in different homes or countries connect when a direct link fails.
+  const iceReady = (async () => {
+    if (params.get('peerhost')) return;
+    if (Array.isArray(CONFIG.iceServers)) PEER_OPTS.config.iceServers = PEER_OPTS.config.iceServers.concat(CONFIG.iceServers);
+    if (!CONFIG.turnCredentialsUrl) return;
+    try {
+      const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 6000);
+      const r = await fetch(CONFIG.turnCredentialsUrl, { signal: ctl.signal }); clearTimeout(timer);
+      const list = await r.json();
+      if (Array.isArray(list)) PEER_OPTS.config.iceServers = PEER_OPTS.config.iceServers.concat(list);
+    } catch (e) {}
   })();
   const canNet = typeof Peer !== 'undefined';
 
@@ -400,10 +609,10 @@ input.text:focus { border-color: var(--ink); outline: none; }
     return Math.round(v * 255).toString(16).padStart(2, '0');
   };
   function cellHex(r, c) {
-    const t = r / (ROWS - 1);
-    const L = 0.93 - 0.63 * t;
+    const tt = r / (ROWS - 1);
+    const L = 0.93 - 0.63 * tt;
     const h = (24 + c * 12) % 360;
-    let C = 0.05 + 0.17 * Math.sin(Math.PI * (0.1 + t * 0.75));
+    let C = 0.05 + 0.17 * Math.sin(Math.PI * (0.1 + tt * 0.75));
     if (!inGamut(oklchToRgb(L, C, h))) {
       let lo = 0, hi = C;
       for (let i = 0; i < 16; i++) { const mid = (lo + hi) / 2; inGamut(oklchToRgb(L, mid, h)) ? lo = mid : hi = mid; }
@@ -437,11 +646,17 @@ input.text:focus { border-color: var(--ink); outline: none; }
   function rankHTML(players, you) {
     const ranked = players.map((p, i) => ({ ...p, i })).sort((a, b) => b.score - a.score);
     const top = ranked.length ? ranked[0].score : 0;
-    return `<ol class="rank">${ranked.map(p => `<li class="${p.score === top ? 'first' : ''}"><span class="place">${ranked.findIndex(q => q.score === p.score) + 1}</span>${dotFor(p)}<span class="nm">${esc(p.name)}${p.i === you ? ' (tú)' : ''}</span><b>${p.score}</b></li>`).join('')}</ol>`;
+    return `<ol class="rank">${ranked.map(p => `<li class="${p.score === top ? 'first' : ''}"><span class="place">${ranked.findIndex(q => q.score === p.score) + 1}</span>${dotFor(p)}<span class="nm">${esc(p.name)}${p.i === you ? t('you') : ''}</span><b>${p.score}</b></li>`).join('')}</ol>`;
+  }
+  function winnerTitle(players) {
+    const top = Math.max(...players.map(p => p.score));
+    const w = players.filter(p => p.score === top).map(p => esc(p.name));
+    return w.length > 1 ? t('tieBetween', { names: w.slice(0, -1).join(', ') + t('and') + w[w.length - 1] }) : t('wins', { name: w[0] });
   }
   const segHTML = (action, current, options) => `<div class="seg" role="group">${options.map(([v, label]) =>
     `<button data-action="${action}" data-v="${v}" aria-pressed="${String(current) === String(v)}">${label}</button>`).join('')}</div>`;
-  const timerOptions = TIMER_OPTIONS.map(v => [v, v ? `${v} s` : 'Sin límite']);
+  const timerOptions = () => TIMER_OPTIONS.map(v => [v, v ? `${v} s` : t('noLimit')]);
+  const noticeText = n => t(n.key, { name: n.name || '' });
 
   /* ---------- sound effects (Web Audio, unlocked by the first tap) ---------- */
   const sfx = (() => {
@@ -456,37 +671,38 @@ input.text:focus { border-color: var(--ink); outline: none; }
     document.addEventListener('pointerdown', get, { passive: true });
     function tone(f0, f1, dur, type = 'sine', vol = 0.2, at = 0) {
       const c = get(); if (!c) return;
-      const t = c.currentTime + at, o = c.createOscillator(), g = c.createGain();
-      o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
-      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-      o.connect(g).connect(c.destination); o.start(t); o.stop(t + dur + 0.05);
+      const st = c.currentTime + at, o = c.createOscillator(), g = c.createGain();
+      o.type = type; o.frequency.setValueAtTime(f0, st); o.frequency.exponentialRampToValueAtTime(f1, st + dur);
+      g.gain.setValueAtTime(0.0001, st); g.gain.exponentialRampToValueAtTime(vol, st + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, st + dur);
+      o.connect(g).connect(c.destination); o.start(st); o.stop(st + dur + 0.05);
     }
     return {
       tick: () => tone(1250, 1150, 0.06, 'sine', 0.18),
       timeup: () => { tone(320, 200, 0.45, 'square', 0.12); },
       buzz: [
-        () => { tone(330, 300, 0.2, 'square', 0.16); tone(330, 280, 0.32, 'square', 0.16, 0.27); },                                         // bocina
-        () => { [392, 370, 349].forEach((f, k) => tone(f, f * 0.97, 0.28, 'sawtooth', 0.11, k * 0.32)); tone(330, 250, 0.85, 'sawtooth', 0.11, 0.96); }, // trombón triste
+        () => { tone(330, 300, 0.2, 'square', 0.16); tone(330, 280, 0.32, 'square', 0.16, 0.27); },                                         // horn
+        () => { [392, 370, 349].forEach((f, k) => tone(f, f * 0.97, 0.28, 'sawtooth', 0.11, k * 0.32)); tone(330, 250, 0.85, 'sawtooth', 0.11, 0.96); }, // sad trombone
         () => { tone(110, 760, 0.32, 'sine', 0.3); tone(760, 260, 0.3, 'sine', 0.22, 0.32); },                                               // boing
       ],
     };
   })();
 
   function showToast(text) {
-    const t = $('#toast'); t.textContent = text; t.hidden = false;
-    clearTimeout(showToast.t); showToast.t = setTimeout(() => { t.hidden = true; }, 3200);
+    const el = $('#toast'); el.textContent = text; el.hidden = false;
+    clearTimeout(showToast.t); showToast.t = setTimeout(() => { el.hidden = true; }, 3200);
   }
   // full-screen flash for the person being buzzed (and for the shared table screen)
   function buzzFX({ from, to, isMe, big, text, sound }) {
-    if (!isMe && !big) { showToast(`${from.name} presionó a ${to.name}`); return; }
+    if (!isMe && !big) { showToast(t('pressed', { from: from.name, to: to.name })); return; }
     const el = $('#buzz');
     el.style.setProperty('--pc', from.color);
-    el.innerHTML = `<div><div class="buzz-text">${esc(text)}</div><div class="buzz-sub">${isMe ? esc(from.name) + ' te está presionando' : esc(from.name) + ' presiona a ' + esc(to.name)}</div></div>`;
+    el.innerHTML = `<div><div class="buzz-text">${esc(text)}</div><div class="buzz-sub">${isMe ? t('pressing', { name: esc(from.name) }) : t('pressesTo', { from: esc(from.name), to: esc(to.name) })}</div></div>`;
     el.hidden = false; el.classList.remove('go'); void el.offsetWidth; el.classList.add('go');
     clearTimeout(buzzFX.t); buzzFX.t = setTimeout(() => { el.hidden = true; }, 1700);
     (sfx.buzz[sound] || sfx.buzz[0])();
     if (isMe && navigator.vibrate) navigator.vibrate([90, 60, 90, 60, 180]);
   }
+  const buzzText = i => { const list = t('buzz'); return list[i % list.length]; };
 
   /* ---------- shared board drawing ---------- */
   function buildBoard(el) {
@@ -511,15 +727,16 @@ input.text:focus { border-color: var(--ink); outline: none; }
     el.appendChild(frag);
     return cells;
   }
-  function frameEl(t, radius, cls) {
+  function frameEl(tg, radius, cls) {
     const f = document.createElement('div'); f.className = 'frame ' + cls;
-    const r0 = Math.max(0, t.r - radius), r1 = Math.min(ROWS - 1, t.r + radius);
-    const c0 = Math.max(0, t.c - radius), c1 = Math.min(COLS - 1, t.c + radius);
+    const r0 = Math.max(0, tg.r - radius), r1 = Math.min(ROWS - 1, tg.r + radius);
+    const c0 = Math.max(0, tg.c - radius), c1 = Math.min(COLS - 1, tg.c + radius);
     f.style.gridRow = `${r0 + 2} / ${r1 + 3}`; f.style.gridColumn = `${c0 + 2} / ${c1 + 3}`;
     return f;
   }
   // d: {players, markers, sel, selPlayer, target, reveal, drop}
   function drawBoard(el, cells, d) {
+    el.setAttribute('aria-label', t('board'));
     el.querySelectorAll('.pawn,.frame,.target-mark,.pts').forEach(n => n.remove());
     el.querySelectorAll('.cell.sel,.cell.dim').forEach(n => n.classList.remove('sel', 'dim'));
     d.markers.forEach((m, i) => {
@@ -551,23 +768,6 @@ input.text:focus { border-color: var(--ink); outline: none; }
     }
   }
 
-  const RULES = `
-    <ol class="rules">
-      <li>En cada turno una persona <b>da las pistas</b>. Ve una tarjeta con 4 colores y elige uno en secreto.</li>
-      <li>Dice en voz alta una pista de <b>una palabra</b>. No vale nombrar colores ni decir filas, números o posiciones del tablero.</li>
-      <li>Por turnos, cada jugador elige la casilla que cree que es y coloca su ficha. Dos fichas no pueden ir en la misma casilla.</li>
-      <li>Luego da una segunda pista de <b>hasta dos palabras</b> y todos colocan una segunda ficha, en orden inverso.</li>
-      <li>Se revela el color con un marco de 3×3 a su alrededor.</li>
-    </ol>
-    <div class="scoring">
-      <span class="n">3</span><span>en la casilla exacta</span>
-      <span class="n">2</span><span>dentro del marco</span>
-      <span class="n">1</span><span>en el anillo que rodea al marco (línea punteada)</span>
-      <span class="n">+1</span><span>para quien da la pista por cada ficha dentro del marco</span>
-    </div>
-    <p>Si juegan con tiempo y se acaba antes de colocar la ficha, ese jugador pierde esa ficha. Con el botón <b>Apurar</b> pueden presionar, con sonido, a quien está tardando.</p>
-    <p>La partida termina cuando todos han dado pistas el número de vueltas elegido. Gana quien tenga más puntos.</p>`;
-
   // hold-to-peek for the cue giver (works on iPad and phones)
   document.addEventListener('pointerdown', e => { const p = e.target.closest('.peek'); if (p) { p.classList.add('on'); try { p.setPointerCapture(e.pointerId); } catch (_) {} } });
   const unpeek = () => document.querySelectorAll('.peek.on').forEach(p => p.classList.remove('on'));
@@ -578,7 +778,13 @@ input.text:focus { border-color: var(--ink); outline: none; }
   let lock = null;
   async function keepAwake() { try { if ('wakeLock' in navigator && !lock) { lock = await navigator.wakeLock.request('screen'); lock.addEventListener('release', () => { lock = null; }); } } catch (e) {} }
 
-  const actions = {};
+  const actions = {
+    setLang(el) {
+      LANG = el.dataset.v === 'en' ? 'en' : 'es';
+      try { localStorage.setItem(LANG_KEY, LANG); } catch (e) {}
+      applyLang(); rerender();
+    },
+  };
   document.addEventListener('click', e => {
     const sh = $('#sheet');
     if (e.target === sh && sh.dataset.close && actions[sh.dataset.close]) { actions[sh.dataset.close](); return; }
@@ -589,7 +795,7 @@ input.text:focus { border-color: var(--ink); outline: none; }
   /* =====================================================================
      PHONE CONTROLLER
      Opened with ?sala=CODE (joins over the network), or started locally
-     by the host phone in "solo celulares" mode (local = in-page transport).
+     by the host phone in "phones only" mode (local = in-page transport).
      ===================================================================== */
   if (params.has('sala')) { phoneMain(null); return; }
 
@@ -599,9 +805,9 @@ input.text:focus { border-color: var(--ink); outline: none; }
     const P = {
       code: (params.get('sala') || saved.code || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4),
       name: saved.name || '', pid: saved.pid || newPid(),
-      joined: false, status: 'idle', err: '', rejected: '', rules: false, popup: '', confirm: '',
+      joined: false, status: 'idle', err: '', errVars: null, rejected: '', rules: false, popup: '', confirm: '',
       v: null, sel: null, hint: '', zoom: saved.zoom || 0, drafts: { c1: '', c2: '' }, lastKey: '',
-      deadline: 0, lastSec: null, lastNotice: 0, buzzCool: false, isHost: !!local,
+      deadline: 0, lastSec: null, lastNotice: 0, buzzCool: false, isHost: !!local, failedOpens: 0,
     };
     if (local) { P.code = local.room(); P.name = local.name; P.pid = local.pid; P.joined = true; P.status = 'open'; }
     else if (saved.joined && saved.code === P.code && P.name) P.joined = true;
@@ -618,23 +824,27 @@ input.text:focus { border-color: var(--ink); outline: none; }
 
     /* ----- network transport (joining phones) ----- */
     let peer = null, conn = null, retryT = null;
+    const setErr = (key, vars) => { P.err = key; P.errVars = vars || null; };
     function phoneConnect() {
       clearTimeout(retryT);
       if (local || !P.joined || P.rejected) return;
-      if (!canNet) { P.err = 'No se pudo cargar la conexión. Revisa el internet y recarga la página.'; render(); return; }
+      if (!canNet) { setErr('noLoad'); render(); return; }
       if (!peer || peer.destroyed) {
         P.status = 'connecting';
-        peer = new Peer(PEER_OPTS);
-        peer.on('open', openConn);
-        peer.on('disconnected', () => { setTimeout(() => { if (peer && !peer.destroyed && peer.disconnected) peer.reconnect(); }, 1000); });
-        peer.on('error', e => {
-          if (e.type === 'peer-unavailable') {
-            if (!P.v) P.err = `No encontramos la sala ${P.code}. Revisa el código y que la sala siga abierta.`;
-            P.status = 'connecting';
-          } else if (e.type === 'browser-incompatible') {
-            P.err = 'Este navegador no puede conectarse. Prueba con Safari o Chrome.';
-          }
-          scheduleRetry(); render();
+        iceReady.then(() => {
+          if (peer && !peer.destroyed) return;
+          peer = new Peer(PEER_OPTS);
+          peer.on('open', openConn);
+          peer.on('disconnected', () => { setTimeout(() => { if (peer && !peer.destroyed && peer.disconnected) peer.reconnect(); }, 1000); });
+          peer.on('error', e => {
+            if (e.type === 'peer-unavailable') {
+              if (!P.v) setErr('notFound', { code: P.code });
+              P.failedOpens = 0; P.status = 'connecting';
+            } else if (e.type === 'browser-incompatible') {
+              setErr('browserPhone');
+            }
+            scheduleRetry(); render();
+          });
         });
         render();
       } else if (peer.disconnected) {
@@ -648,11 +858,18 @@ input.text:focus { border-color: var(--ink); outline: none; }
       if (conn) { try { conn.close(); } catch (e) {} }
       const c = peer.connect(PREFIX + P.code, { serialization: 'json', reliable: true });
       conn = c;
-      c.on('open', () => { if (conn !== c) return; P.status = 'open'; P.err = ''; c.send({ t: 'hello', pid: P.pid, name: P.name }); render(); });
+      c.on('open', () => { if (conn !== c) return; P.status = 'open'; P.err = ''; P.failedOpens = 0; c.send({ t: 'hello', pid: P.pid, name: P.name }); render(); });
       c.on('data', d => { if (conn === c) onData(d); });
       c.on('close', () => { if (conn === c) { P.status = 'connecting'; scheduleRetry(); render(); } });
       c.on('error', () => { if (conn === c) scheduleRetry(); });
-      setTimeout(() => { if (conn === c && !c.open) { try { c.close(); } catch (e) {} scheduleRetry(); } }, 9000);
+      setTimeout(() => {
+        if (conn === c && !c.open) {
+          try { c.close(); } catch (e) {}
+          // the room answered on the signalling server but no direct link formed: likely NAT between networks
+          if (++P.failedOpens >= 2 && !P.v) setErr('noDirect');
+          scheduleRetry(); render();
+        }
+      }, 9000);
     }
     function scheduleRetry() { if (local || P.rejected || !P.joined) return; clearTimeout(retryT); retryT = setTimeout(phoneConnect, 2500); }
     document.addEventListener('visibilitychange', () => {
@@ -663,18 +880,18 @@ input.text:focus { border-color: var(--ink); outline: none; }
 
     function onData(d) {
       if (!d || typeof d !== 'object') return;
-      if (d.t === 'reject') { P.rejected = String(d.msg || 'No puedes entrar a esta sala.'); P.joined = false; P.v = null; persist(); try { conn.close(); } catch (e) {} render(); return; }
+      if (d.t === 'reject') { P.rejected = I18N.es[d.key] ? d.key : 'rejDefault'; P.joined = false; P.v = null; persist(); try { conn.close(); } catch (e) {} render(); return; }
       if (d.t === 'buzz') {
         const v = P.v; if (!v || !v.players[d.from] || !v.players[d.to]) return;
-        buzzFX({ from: v.players[d.from], to: v.players[d.to], isMe: d.to === v.you, text: d.text, sound: d.sound });
+        buzzFX({ from: v.players[d.from], to: v.players[d.to], isMe: d.to === v.you, text: buzzText(d.text | 0), sound: d.sound });
         return;
       }
-      if (d.t === 'closed') { P.rejected = 'La sala se cerró.'; P.joined = false; P.v = null; persist(); render(); return; }
+      if (d.t === 'closed') { P.rejected = 'roomClosed'; P.joined = false; P.v = null; persist(); render(); return; }
       if (d.t !== 'state' || !d.v) return;
       const prev = P.v, v = d.v;
       P.v = v;
       P.deadline = v.timeLeft != null ? Date.now() + v.timeLeft : 0;
-      if (v.notice && v.notice.id !== P.lastNotice) { P.lastNotice = v.notice.id; showToast(v.notice.text); }
+      if (v.notice && v.notice.id !== P.lastNotice) { P.lastNotice = v.notice.id; showToast(noticeText(v.notice)); }
       const key = v.phase + ':' + v.turn + ':' + v.step + ':' + v.gi;
       if (key !== P.lastKey) {
         P.sel = null; P.hint = ''; P.lastSec = null;
@@ -713,9 +930,10 @@ input.text:focus { border-color: var(--ink); outline: none; }
       p_join() {
         const code = ($('#jcode').value || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4);
         const name = ($('#jname').value || '').trim().slice(0, 16);
-        if (code.length !== 4) { P.err = 'El código de la sala tiene 4 letras.'; render(); return; }
-        if (!name) { P.err = 'Escribe tu nombre.'; render(); return; }
-        P.code = code; P.name = name; P.joined = true; P.rejected = ''; P.err = ''; P.v = null;
+        P.code = code; P.name = name;
+        if (code.length !== 4) { setErr('codeLen'); render(); return; }
+        if (!name) { setErr('typeName'); render(); return; }
+        P.joined = true; P.rejected = ''; P.err = ''; P.v = null; P.failedOpens = 0;
         persist(); keepAwake(); phoneConnect(); render();
       },
       p_leave() {
@@ -740,7 +958,7 @@ input.text:focus { border-color: var(--ink); outline: none; }
       p_scores() { P.popup = 'scores'; render(); },
       p_menu() { P.popup = 'menu'; P.confirm = ''; render(); },
       p_close() { P.popup = ''; P.confirm = ''; render(); },
-      // host-only controls ("solo celulares")
+      // host-only controls ("phones only")
       p_hrounds(el) { send('h_set', { k: 'rounds', v: +el.dataset.v }); },
       p_htimer(el) { send('h_set', { k: 'timer', v: +el.dataset.v }); },
       p_hstart() { send('h_start'); },
@@ -756,15 +974,19 @@ input.text:focus { border-color: var(--ink); outline: none; }
         send('h_close');
       },
     });
+    rerender = () => render();
+
     document.addEventListener('input', e => {
       if (e.target.id === 'pc1') P.drafts.c1 = e.target.value;
       if (e.target.id === 'pc2') P.drafts.c2 = e.target.value;
+      if (e.target.id === 'jcode') P.code = e.target.value;
+      if (e.target.id === 'jname') P.name = e.target.value;
     });
     board.addEventListener('click', e => {
       const d = e.target.closest('.cell'), v = P.v;
       if (!d || !v || v.phase !== 'guess' || v.order[v.gi] !== v.you) return;
       const r = +d.dataset.r, c = +d.dataset.c;
-      if (v.markers.some(m => m.r === r && m.c === c)) { P.hint = 'Esa casilla ya tiene una ficha.'; P.sel = null; }
+      if (v.markers.some(m => m.r === r && m.c === c)) { P.hint = 'occupied'; P.sel = null; }
       else { P.sel = (P.sel && P.sel.r === r && P.sel.c === c) ? null : { r, c }; P.hint = ''; }
       render();
     });
@@ -772,24 +994,24 @@ input.text:focus { border-color: var(--ink); outline: none; }
     function clueHTML(v) {
       const gname = esc(v.players[v.giver].name);
       if (v.step === 1) return v.clue1
-        ? `<div class="eyebrow">Pista de ${gname}</div><div class="cluetext">«${esc(v.clue1)}»</div>`
-        : `<div class="eyebrow">Pista de ${gname}</div><div class="cluetext quiet">Escucha la pista de una palabra.</div>`;
-      const first = v.clue1 ? `<small>Primera: «${esc(v.clue1)}»</small>` : '';
+        ? `<div class="eyebrow">${t('clueOf', { name: gname })}</div><div class="cluetext">${t('quote', { clue: esc(v.clue1) })}</div>`
+        : `<div class="eyebrow">${t('clueOf', { name: gname })}</div><div class="cluetext quiet">${t('listen1')}</div>`;
+      const first = v.clue1 ? `<small>${t('firstWas', { clue: esc(v.clue1) })}</small>` : '';
       return v.clue2
-        ? `<div class="eyebrow">Segunda pista de ${gname}</div><div class="cluetext">«${esc(v.clue2)}»${first}</div>`
-        : `<div class="eyebrow">Segunda pista de ${gname}</div><div class="cluetext quiet">Escucha la pista de dos palabras.${first}</div>`;
+        ? `<div class="eyebrow">${t('clue2Of', { name: gname })}</div><div class="cluetext">${t('quote', { clue: esc(v.clue2) })}${first}</div>`
+        : `<div class="eyebrow">${t('clue2Of', { name: gname })}</div><div class="cluetext quiet">${t('listen2')}${first}</div>`;
     }
     function buzzHTML(v) {
       if (!BUZZ_PHASES.includes(v.phase)) return '';
-      const t = targetOf(v);
-      if (t == null || t === v.you || !v.players[t]) return '';
-      return `<button class="ghost buzzbtn" data-action="p_buzz" ${P.buzzCool ? 'disabled' : ''}>Apurar a ${esc(v.players[t].name)}</button>`;
+      const tg = targetOf(v);
+      if (tg == null || tg === v.you || !v.players[tg]) return '';
+      return `<button class="ghost buzzbtn" data-action="p_buzz" ${P.buzzCool ? 'disabled' : ''}>${t('hurry', { name: esc(v.players[tg].name) })}</button>`;
     }
     const timerHTML = v => v.phase === 'guess' && v.timer ? `<span class="timer">${Math.max(0, Math.ceil((P.deadline - Date.now()) / 1000))}</span>` : '';
     function roomHTML(v, withQR) {
       return `<div class="lobby">
-          ${withQR && v.net === 'open' ? `<div class="qr" aria-label="Código QR para entrar">${qrSVG(v.url)}</div>` : ''}
-          <div class="stack"><div class="eyebrow">Código de la sala</div><div class="roomcode">${esc(v.room)}</div>
+          ${withQR && v.net === 'open' ? `<div class="qr" aria-label="${t('qr')}">${qrSVG(v.url)}</div>` : ''}
+          <div class="stack"><div class="eyebrow">${t('roomCode')}</div><div class="roomcode">${esc(v.room)}</div>
           <div class="url">${esc(v.url)}</div></div></div>`;
     }
 
@@ -798,18 +1020,18 @@ input.text:focus { border-color: var(--ink); outline: none; }
       let html = '';
       if (P.popup === 'scores' && v) {
         html = `<div class="card small" role="dialog" aria-modal="true">
-          <div class="eyebrow">${v.phase === 'lobby' ? 'Sala ' + esc(v.room) : v.phase === 'end' ? 'Resultado final' : `Turno ${v.turn + 1} de ${v.total}`}</div>
-          <h2>Así van</h2>${rankHTML(v.players, v.you)}
-          <button class="primary" data-action="p_close">Cerrar</button></div>`;
+          <div class="titlerow"><div class="eyebrow">${v.phase === 'lobby' ? t('room', { room: esc(v.room) }) : v.phase === 'end' ? t('finalResult') : t('turnOf', { n: v.turn + 1, total: v.total })}</div>${langHTML()}</div>
+          <h2>${t('howGoing')}</h2>${rankHTML(v.players, v.you)}
+          <button class="primary" data-action="p_close">${t('close')}</button></div>`;
       } else if (P.popup === 'menu' && v && P.isHost) {
         const playing = !['lobby', 'end'].includes(v.phase);
-        html = `<div class="card small" role="dialog" aria-modal="true"><h2>Menú</h2>
-          <p>Sala <b>${esc(v.room)}</b> · ${v.net === 'open' ? '<span class="net ok">abierta</span>' : '<span class="net bad">conectando…</span>'}</p>
+        html = `<div class="card small" role="dialog" aria-modal="true"><div class="titlerow"><h2>${t('menu')}</h2>${langHTML()}</div>
+          <p>${t('room', { room: `<b>${esc(v.room)}</b>` })} · ${v.net === 'open' ? `<span class="net ok">${t('open')}</span>` : `<span class="net bad">${t('connectingShort')}</span>`}</p>
           <div class="url">${esc(v.url)}</div>
-          ${playing ? '<button class="ghost" data-action="p_hskip">Saltar este turno</button>' : ''}
-          ${playing ? `<button class="ghost" data-action="p_hlobby">${P.confirm === 'lobby' ? 'Toca otra vez para terminar la partida' : 'Terminar partida y volver a la sala'}</button>` : ''}
-          <button class="ghost" data-action="p_hclose">${P.confirm === 'close' ? 'Toca otra vez: todos saldrán de la sala' : 'Cerrar la sala'}</button>
-          <button class="primary" data-action="p_close">Seguir jugando</button></div>`;
+          ${playing ? `<button class="ghost" data-action="p_hskip">${t('skipTurn')}</button>` : ''}
+          ${playing ? `<button class="ghost" data-action="p_hlobby">${P.confirm === 'lobby' ? t('confirmEndPhone') : t('endGameBack')}</button>` : ''}
+          <button class="ghost" data-action="p_hclose">${P.confirm === 'close' ? t('confirmClose') : t('closeRoom')}</button>
+          <button class="primary" data-action="p_close">${t('keepPlaying')}</button></div>`;
       }
       if (!html) { sh.hidden = true; sh.innerHTML = ''; delete sh.dataset.close; return; }
       sh.className = 'sheet scrim'; sh.innerHTML = html; sh.dataset.close = 'p_close'; sh.hidden = false;
@@ -820,132 +1042,130 @@ input.text:focus { border-color: var(--ink); outline: none; }
       let status = '';
       if (P.joined) {
         const ok = local ? (v && v.net === 'open') : P.status === 'open';
-        status = ok ? '<span class="net ok" title="Conectado" aria-label="Conectado">Conectado</span>' : '<span class="net bad" title="Conectando" aria-label="Conectando">Conectando…</span>';
+        status = ok ? `<span class="net ok" title="${t('connected')}" aria-label="${t('connected')}">${t('connected')}</span>`
+                    : `<span class="net bad" title="${t('connectingShort')}" aria-label="${t('connectingShort')}">${t('connectingShort')}</span>`;
       }
       if (v && P.joined) {
         const me = v.players[v.you];
-        head.innerHTML = `<button class="me" data-action="p_scores" aria-label="Ver puntajes">${dotFor(me)}${esc(me.name)} <span class="score">${me.score} pts</span></button>
+        head.innerHTML = `<button class="me" data-action="p_scores" aria-label="${t('seeScores')}">${dotFor(me)}${esc(me.name)} <span class="score">${t('pts', { n: me.score })}</span></button>
           <div class="tools">${status}
-            <button class="iconbtn" data-action="p_zoom" data-d="-4" aria-label="Alejar tablero">−</button><button class="iconbtn" data-action="p_zoom" data-d="4" aria-label="Acercar tablero">+</button>
-            ${P.isHost ? '<button class="iconbtn" data-action="p_menu">Menú</button>' : ''}</div>`;
+            <button class="iconbtn" data-action="p_zoom" data-d="-4" aria-label="${t('zoomOut')}">−</button><button class="iconbtn" data-action="p_zoom" data-d="4" aria-label="${t('zoomIn')}">+</button>
+            ${P.isHost ? `<button class="iconbtn" data-action="p_menu">${t('menu')}</button>` : ''}</div>`;
       } else {
-        head.innerHTML = `<div class="brand"><div class="logo" aria-hidden="true"><i style="background:#e0533d"></i><i style="background:#e8b52c"></i><i style="background:#2f8f6a"></i><i style="background:#3b5bd6"></i></div><h1>Pistas de Color</h1></div><div class="tools">${status}</div>`;
+        head.innerHTML = `<div class="brand"><div class="logo" aria-hidden="true"><i style="background:#e0533d"></i><i style="background:#e8b52c"></i><i style="background:#2f8f6a"></i><i style="background:#3b5bd6"></i></div><h1>${t('title')}</h1></div><div class="tools">${status}${langHTML()}</div>`;
       }
 
       let html = '', showBoard = false;
       if (P.rules) {
-        html = `<div class="card-plain"><h2>Cómo se juega</h2>${RULES}<button class="primary" data-action="p_rules">Entendido</button></div>`;
+        html = `<div class="card-plain"><h2>${t('howTo')}</h2>${t('rules')}<button class="primary" data-action="p_rules">${t('understood')}</button></div>`;
       } else if (!P.joined) {
         html = `<div class="card-plain">
-          <h2>Entrar a la partida</h2>
-          ${P.rejected ? `<p><b>${esc(P.rejected)}</b></p>` : '<p>Escribe el código de la sala y tu nombre.</p>'}
-          <label class="eyebrow" for="jcode">Código de la sala</label>
-          <input class="text" id="jcode" maxlength="4" autocomplete="off" autocapitalize="characters" placeholder="ABCD" value="${esc(P.code)}" style="text-transform:uppercase;letter-spacing:.2em">
-          <label class="eyebrow" for="jname">Tu nombre</label>
-          <input class="text" id="jname" maxlength="16" autocomplete="off" placeholder="Por ejemplo: Ana" value="${esc(P.name)}">
-          ${P.err ? `<p class="net bad">${esc(P.err)}</p>` : ''}
-          <button class="primary" data-action="p_join">Entrar</button>
-          <button class="linkbtn" data-action="p_rules">Cómo se juega</button></div>`;
+          <h2>${t('joinGame')}</h2>
+          ${P.rejected ? `<p><b>${t(P.rejected)}</b></p>` : `<p>${t('joinLead')}</p>`}
+          <label class="eyebrow" for="jcode">${t('roomCode')}</label>
+          <input class="text" id="jcode" maxlength="4" autocomplete="off" autocapitalize="characters" placeholder="ABCD" value="${esc(P.code)}">
+          <label class="eyebrow" for="jname">${t('yourName')}</label>
+          <input class="text" id="jname" maxlength="16" autocomplete="off" placeholder="${t('namePh')}" value="${esc(P.name)}">
+          ${P.err ? `<p class="net bad">${t(P.err, P.errVars)}</p>` : ''}
+          <button class="primary" data-action="p_join">${t('enter')}</button>
+          <button class="linkbtn" data-action="p_rules">${t('howTo')}</button></div>`;
       } else if (!v) {
         html = local
-          ? `<div class="card-plain"><h2>Abriendo la sala…</h2></div>`
-          : `<div class="card-plain"><h2>Entrando a la sala ${esc(P.code)}…</h2>
-            <p>${P.err ? esc(P.err) : 'Conectando. Esto tarda unos segundos.'}</p>
-            <button class="ghost" data-action="p_leave">Cambiar código o nombre</button></div>`;
+          ? `<div class="card-plain"><h2>${t('opening')}</h2></div>`
+          : `<div class="card-plain"><h2>${t('enteringRoom', { code: esc(P.code) })}</h2>
+            <p>${P.err ? t(P.err, P.errVars) : t('connecting')}</p>
+            <button class="ghost" data-action="p_leave">${t('changeCode')}</button></div>`;
       } else {
         const g = v.giver, isG = v.you === g, gname = g >= 0 ? esc(v.players[g].name) : '';
         const myTurn = v.phase === 'guess' && v.order[v.gi] === v.you;
         const tcolor = v.target ? COLORS[v.target.r][v.target.c] : '';
-        const peek = isG && v.target ? `<div class="peek" style="--peek:${tcolor}">Mantén pulsado para ver tu color</div>` : '';
+        const peek = isG && v.target ? `<div class="peek" style="--peek:${tcolor}">${t('holdPeek')}</div>` : '';
         const buzz = buzzHTML(v);
         switch (v.phase) {
           case 'lobby': {
-            const players = `<div class="players">${v.players.map((p, i) => `<div class="prow">${dotFor(p)}<span class="nm">${esc(p.name)}${i === v.you ? ' (tú)' : ''}</span>
-              ${p.online ? '' : '<span class="net bad">desconectado</span>'}
-              ${P.isHost && i !== v.you ? `<button class="x" data-action="p_hkick" data-i="${i}" aria-label="Quitar a ${esc(p.name)}">×</button>` : ''}</div>`).join('')}</div>`;
+            const players = `<div class="players">${v.players.map((p, i) => `<div class="prow">${dotFor(p)}<span class="nm">${esc(p.name)}${i === v.you ? t('you') : ''}</span>
+              ${p.online ? '' : `<span class="net bad">${t('offline')}</span>`}
+              ${P.isHost && i !== v.you ? `<button class="x" data-action="p_hkick" data-i="${i}" aria-label="${t('removeX', { name: esc(p.name) })}">×</button>` : ''}</div>`).join('')}</div>`;
             if (P.isHost) {
               const n = v.players.length;
-              html = `<div class="card-plain"><h2>Tu sala está lista</h2>
-                <p>Que los demás escaneen el código con la cámara de su celular, o abran la dirección y escriban el código.</p>
+              html = `<div class="card-plain"><div class="titlerow"><h2>${t('roomReady')}</h2>${langHTML()}</div>
+                <p>${t('roomReadyLead')}</p>
                 ${roomHTML(v, true)}
-                <h3>Jugadores (${n})</h3>${players}
-                ${n < 2 ? '<p class="empty">Esperando a que entre alguien más…</p>' : ''}
-                <div class="setting"><h3>¿Cuántas veces da pistas cada persona?</h3>${segHTML('p_hrounds', v.settings.rounds, [[1, '1'], [2, '2'], [3, '3']])}</div>
-                <div class="setting"><h3>Tiempo para colocar cada ficha</h3>${segHTML('p_htimer', v.settings.timer, timerOptions)}</div>
-                <button class="primary" data-action="p_hstart" ${n >= 2 ? '' : 'disabled'}>${n >= 2 ? 'Empezar partida' : 'Faltan jugadores'}</button>
-                <button class="linkbtn" data-action="p_rules">Cómo se juega</button></div>`;
+                <h3>${t('playersN', { n })}</h3>${players}
+                ${n < 2 ? `<p class="empty">${t('waitingSomeone')}</p>` : ''}
+                <div class="setting"><h3>${t('roundsQ')}</h3>${segHTML('p_hrounds', v.settings.rounds, [[1, '1'], [2, '2'], [3, '3']])}</div>
+                <div class="setting"><h3>${t('timerQ')}</h3>${segHTML('p_htimer', v.settings.timer, timerOptions())}</div>
+                <button class="primary" data-action="p_hstart" ${n >= 2 ? '' : 'disabled'}>${n >= 2 ? t('start') : t('needPlayers')}</button>
+                <button class="linkbtn" data-action="p_rules">${t('howTo')}</button></div>`;
             } else {
-              html = `<div class="card-plain"><h2>¡Listo, ${esc(v.players[v.you].name)}!</h2>
-                <p>${v.mode === 'phones' ? `Esperando a que ${esc(v.hostName)} empiece la partida.` : 'Esperando a que empiece la partida en el iPad.'}</p>
+              html = `<div class="card-plain"><div class="titlerow"><h2>${t('readyName', { name: esc(v.players[v.you].name) })}</h2>${langHTML()}</div>
+                <p>${v.mode === 'phones' ? t('waitHost', { name: esc(v.hostName) }) : t('waitIpad')}</p>
                 ${players}
-                ${v.mode === 'phones' ? `<p class="sub">¿Falta alguien? Que entre con este código:</p>${roomHTML(v, true)}` : ''}
-                <button class="linkbtn" data-action="p_rules">Cómo se juega</button>
-                <button class="ghost" data-action="p_leave">Salir de la sala</button></div>`;
+                ${v.mode === 'phones' ? `<p class="sub">${t('missing')}</p>${roomHTML(v, true)}` : ''}
+                <button class="linkbtn" data-action="p_rules">${t('howTo')}</button>
+                <button class="ghost" data-action="p_leave">${t('leaveRoom')}</button></div>`;
             }
             break;
           }
           case 'pick':
             if (isG) {
-              html = `<div class="card-plain"><h2>Elige tu color secreto</h2>
-                <p>Que nadie vea tu pantalla. Toca uno de los cuatro.</p>
+              html = `<div class="card-plain"><h2>${t('pickTitle')}</h2>
+                <p>${t('pickLeadPhone')}</p>
                 <div class="cardpick">${v.card.map((p, i) => {
                   const on = v.target && v.target.r === p.r && v.target.c === p.c;
                   return `<button class="opt" data-action="p_pick" data-i="${i}" aria-pressed="${on}"><span class="fill" style="background:${COLORS[p.r][p.c]}"></span>${coord(p)}</button>`;
                 }).join('')}</div>
-                <button class="linkbtn" data-action="p_redraw">Sacar otra tarjeta</button>
-                <label for="pc1" class="eyebrow">Tu pista de una palabra (opcional: saldrá en las pantallas)</label>
-                <input class="text" id="pc1" maxlength="30" autocomplete="off" placeholder="Por ejemplo: aguacate" value="${esc(P.drafts.c1)}">
-                <button class="primary" data-action="p_hide" ${v.target ? '' : 'disabled'}>Listo: empezar a adivinar</button></div>`;
+                <button class="linkbtn" data-action="p_redraw">${t('redraw')}</button>
+                <label for="pc1" class="eyebrow">${t('clue1LabelPhone')}</label>
+                <input class="text" id="pc1" maxlength="30" autocomplete="off" placeholder="${t('cluePh')}" value="${esc(P.drafts.c1)}">
+                <button class="primary" data-action="p_hide" ${v.target ? '' : 'disabled'}>${t('startGuessing')}</button></div>`;
             } else {
               showBoard = true;
-              html = `<div class="rowx"><div class="who">${dotFor(v.players[g])}<div><div class="eyebrow">Turno ${v.turn + 1} de ${v.total}</div><div class="big">${gname} está eligiendo un color</div></div></div></div>${buzz}`;
+              html = `<div class="rowx"><div class="who">${dotFor(v.players[g])}<div><div class="eyebrow">${t('turnOf', { n: v.turn + 1, total: v.total })}</div><div class="big">${t('choosing', { name: gname })}</div></div></div></div>${buzz}`;
             }
             break;
           case 'guess':
             showBoard = true;
             if (myTurn) {
               html = `<div class="rowx"><div class="clue">${clueHTML(v)}</div>${timerHTML(v)}</div>
-                <div class="rowx"><div><div class="eyebrow">Te toca · ficha ${v.step} de 2</div>
-                  <div class="preview">${P.sel ? `<span class="swatch" style="background:${COLORS[P.sel.r][P.sel.c]}"></span><span class="coord">${coord(P.sel)}</span>` : `<span class="hint ${P.hint ? 'warn' : ''}">${P.hint || 'Toca una casilla del tablero.'}</span>`}</div></div>
-                  <button class="primary" data-action="p_place" ${P.sel ? '' : 'disabled'}>Colocar ficha</button></div>`;
+                <div class="rowx"><div><div class="eyebrow">${t('yourTurn')} · ${t('markerOf', { n: v.step })}</div>
+                  <div class="preview">${P.sel ? `<span class="swatch" style="background:${COLORS[P.sel.r][P.sel.c]}"></span><span class="coord">${coord(P.sel)}</span>` : `<span class="hint ${P.hint ? 'warn' : ''}">${t(P.hint || 'tapCell')}</span>`}</div></div>
+                  <button class="primary" data-action="p_place" ${P.sel ? '' : 'disabled'}>${t('place')}</button></div>`;
             } else {
               const now = v.players[v.order[v.gi]];
               html = `<div class="rowx">${peek}<div class="clue">${clueHTML(v)}</div></div>
-                <div class="rowx"><div class="who">${dotFor(now)}<div><div class="eyebrow">Turno de</div><div class="big">${esc(now.name)}</div></div></div>${timerHTML(v)}</div>${buzz}`;
+                <div class="rowx"><div class="who">${dotFor(now)}<div><div class="eyebrow">${t('nowPlaying')}</div><div class="big">${esc(now.name)}</div></div></div>${timerHTML(v)}</div>${buzz}`;
             }
             break;
           case 'clue2':
             showBoard = true;
             html = isG
-              ? `<div class="rowx">${peek}<div><div class="eyebrow">Segunda pista</div><div class="big">Hasta dos palabras</div></div></div>
-                 <input class="text" id="pc2" maxlength="40" autocomplete="off" placeholder="Escríbela aquí (opcional)" value="${esc(P.drafts.c2)}">
-                 <button class="primary" data-action="p_round2">Empezar segunda ronda</button>`
-              : `<div class="rowx"><div class="who">${dotFor(v.players[g])}<div><div class="eyebrow">Segunda pista</div><div class="big">${gname} está pensando</div></div></div></div>${buzz}`;
+              ? `<div class="rowx">${peek}<div><div class="eyebrow">${t('secondClue')}</div><div class="big">${t('upTo2')}</div></div></div>
+                 <input class="text" id="pc2" maxlength="40" autocomplete="off" placeholder="${t('clue2Ph')}" value="${esc(P.drafts.c2)}">
+                 <button class="primary" data-action="p_round2">${t('startRound2')}</button>`
+              : `<div class="rowx"><div class="who">${dotFor(v.players[g])}<div><div class="eyebrow">${t('secondClue')}</div><div class="big">${t('isThinking', { name: gname })}</div></div></div></div>${buzz}`;
             break;
           case 'ready':
             showBoard = true;
             html = isG
-              ? `<div class="rowx">${peek}<div class="big">Todas las fichas están puestas</div></div><button class="primary" data-action="p_reveal">Revelar mi color</button>`
-              : `<div class="big">Todas las fichas están puestas</div><p>Esperando a que ${gname} revele su color.</p>${buzz}`;
+              ? `<div class="rowx">${peek}<div class="big">${t('allPlaced')}</div></div><button class="primary" data-action="p_reveal">${t('revealMine')}</button>`
+              : `<div class="big">${t('allPlaced')}</div><p>${t('waitReveal', { name: gname })}</p>${buzz}`;
             break;
           case 'reveal': {
             showBoard = true;
             const mine = v.result ? v.result.pts[v.you] : 0;
-            html = `<div class="rowx"><div class="preview"><span class="swatch" style="background:${tcolor}"></span><div><div class="eyebrow">Era</div><span class="coord">${coord(v.target)}</span></div></div>
-                <div><div class="eyebrow">${isG ? 'Ganaste por tus pistas' : 'Ganaste'}</div><div class="bigscore">+${mine}</div></div></div>
-              <button class="primary" data-action="p_next">${v.turn + 1 >= v.total ? 'Ver resultado final' : 'Siguiente turno'}</button>`;
+            html = `<div class="rowx"><div class="preview"><span class="swatch" style="background:${tcolor}"></span><div><div class="eyebrow">${t('itWas')}</div><span class="coord">${coord(v.target)}</span></div></div>
+                <div><div class="eyebrow">${isG ? t('wonClue') : t('won')}</div><div class="bigscore">+${mine}</div></div></div>
+              <button class="primary" data-action="p_next">${v.turn + 1 >= v.total ? t('seeFinal') : t('next')}</button>`;
             break;
           }
-          case 'end': {
-            const ranked = v.players.map(p => p.score).sort((a, b) => b - a);
-            const winners = v.players.filter(p => p.score === ranked[0]);
-            html = `<div class="card-plain"><h2>${winners.length > 1 ? '¡Empate!' : '¡Gana ' + esc(winners[0].name) + '!'}</h2>
+          case 'end':
+            html = `<div class="card-plain"><h2>${winnerTitle(v.players)}</h2>
               ${rankHTML(v.players, v.you)}
               ${P.isHost
-                ? '<button class="primary" data-action="p_hrematch">Jugar otra vez</button><button class="ghost" data-action="p_hlobby">Volver a la sala</button>'
-                : `<p>${v.mode === 'phones' ? esc(v.hostName) + ' puede empezar otra partida.' : 'Pueden jugar otra vez desde el iPad.'}</p>`}</div>`;
+                ? `<button class="primary" data-action="p_hrematch">${t('playAgain')}</button><button class="ghost" data-action="p_hlobby">${t('backToRoom')}</button>`
+                : `<p>${v.mode === 'phones' ? t('canPlayAgainHost', { name: esc(v.hostName) }) : t('canPlayAgainIpad')}</p>`}</div>`;
             break;
-          }
         }
       }
       const active = document.activeElement, activeId = active && active.id, caret = active && active.selectionStart;
@@ -975,7 +1195,8 @@ input.text:focus { border-color: var(--ink); outline: none; }
      mode 'remote' — the iPad shows the board, players join from phones
      mode 'phones' — no iPad: this phone hosts the room and also plays
      ===================================================================== */
-  let S, sel = null, ui = { menu: false, rules: false, scores: false, confirmNew: false, hint: '', justPlaced: -1, phonesChoice: false, lastNotice: 0, home: true, joinErr: '', joinCode: '', joinName: '' };
+  let S, sel = null;
+  const ui = { menu: false, rules: false, scores: false, confirmNew: false, hint: '', justPlaced: -1, phonesChoice: false, lastNotice: 0, home: true, joinErr: '', joinCode: '', joinName: '', hostName: '' };
   let phoneApi = null;
   const fresh = (names) => ({
     mode: 'local', room: '', hostPid: '',
@@ -996,10 +1217,10 @@ input.text:focus { border-color: var(--ink); outline: none; }
   const occupied = (r, c) => S.markers.some(m => m.r === r && m.c === c);
   const pname = i => esc(S.players[i].name);
   const dot = i => dotFor(S.players[i]);
-  const notice = text => { S.notice = { id: Date.now(), text }; };
+  const notice = (key, name) => { S.notice = { id: Date.now(), key, name }; };
 
   function startLocal() {
-    S.players = S.setup.names.map((n, i) => ({ name: n.trim() || `Jugador ${i + 1}`, color: PCOLORS[i], score: 0 }));
+    S.players = S.setup.names.map((n, i) => ({ name: n.trim() || t('playerN', { n: i + 1 }), color: PCOLORS[i], score: 0 }));
     S.rounds = S.setup.rounds; S.timer = S.setup.timer; S.turn = 0;
     beginTurn(); keepAwake();
   }
@@ -1034,10 +1255,10 @@ input.text:focus { border-color: var(--ink); outline: none; }
   }
   function startRound2() { S.step = 2; S.order.reverse(); S.gi = 0; S.phase = 'guess'; sel = null; }
   function reveal() {
-    const t = S.target, g = giverIdx(), pts = S.players.map(() => 0);
+    const tg = S.target, g = giverIdx(), pts = S.players.map(() => 0);
     let inFrame = 0;
     S.markers.forEach(m => {
-      const d = Math.max(Math.abs(m.r - t.r), Math.abs(m.c - t.c));
+      const d = Math.max(Math.abs(m.r - tg.r), Math.abs(m.c - tg.c));
       m.pts = d === 0 ? 3 : d === 1 ? 2 : d === 2 ? 1 : 0;
       pts[m.p] += m.pts;
       if (d <= 1) inFrame++;
@@ -1088,12 +1309,12 @@ input.text:focus { border-color: var(--ink); outline: none; }
     if (left > (remote() ? -1500 : 0)) return;
     const p = guesser();
     if (sel) placeAt(sel.r, sel.c);
-    else { advance(); notice(`Se acabó el tiempo de ${S.players[p].name}`); }
+    else { advance(); notice('timeUp', S.players[p].name); }
     save(); render();
   }, 200);
 
   /* ---------- hosting a room ---------- */
-  let peer = null, hostAttempts = 0;
+  let peer = null, hostAttempts = 0, hostPending = false;
   const conns = new Map();
   const lastBuzz = new Map();
   const net = { status: 'off', error: '' };
@@ -1103,12 +1324,14 @@ input.text:focus { border-color: var(--ink); outline: none; }
     return location.origin + location.pathname + '?' + q.toString();
   }
   function startHost() {
-    if (peer || !remote()) return;
-    if (!canNet || !/^https?:$/.test(location.protocol)) {
-      net.status = 'error'; net.error = 'No se puede abrir la sala desde aquí. Abre el juego desde su página web.'; return;
-    }
+    if (peer || hostPending || !remote()) return;
+    if (!canNet || !/^https?:$/.test(location.protocol)) { net.status = 'error'; net.error = 'cantHostHere'; return; }
     if (!S.room) { S.room = newCode(); save(); }
     net.status = 'connecting'; net.error = '';
+    hostPending = true;
+    iceReady.then(() => { hostPending = false; if (!peer && remote()) openHostPeer(); });
+  }
+  function openHostPeer() {
     const p = new Peer(PREFIX + S.room, PEER_OPTS);
     peer = p;
     p.on('open', () => { if (peer !== p) return; hostAttempts = 0; net.status = 'open'; net.error = ''; render(); });
@@ -1129,11 +1352,11 @@ input.text:focus { border-color: var(--ink); outline: none; }
         return;
       }
       if (['network', 'server-error', 'socket-error', 'socket-closed', 'disconnected'].includes(err.type)) {
-        net.status = 'connecting'; net.error = 'Sin conexión con el servidor. Reintentando…'; render();
+        net.status = 'connecting'; net.error = 'noServer'; render();
         setTimeout(() => { if (peer === p && !p.destroyed && p.disconnected) p.reconnect(); }, 3000);
         return;
       }
-      if (err.type === 'browser-incompatible') { net.status = 'error'; net.error = 'Este navegador no permite jugar con celulares. Usa Safari o Chrome.'; render(); }
+      if (err.type === 'browser-incompatible') { net.status = 'error'; net.error = 'browserNo'; render(); }
     });
   }
   function stopHost() {
@@ -1153,18 +1376,18 @@ input.text:focus { border-color: var(--ink); outline: none; }
     };
     c.on('close', gone); c.on('error', gone);
   }
+  function rejectConn(c, key) { try { c.send({ t: 'reject', key }); } catch (e) {} setTimeout(() => { try { c.close(); } catch (e) {} }, 500); }
   function onHostData(c, d) {
     if (!d || typeof d !== 'object' || !remote()) return;
     if (d.t === 'hello' && !c.local) {
-      const name = String(d.name || '').trim().slice(0, 16) || 'Jugador';
+      const name = String(d.name || '').trim().slice(0, 16) || '?';
       const pid = String(d.pid || '').slice(0, 40);
       if (!pid || pid === S.hostPid) return;
       let i = S.players.findIndex(p => p.pid === pid);
       if (i < 0) i = S.players.findIndex(p => !p.online && p.name.toLowerCase() === name.toLowerCase());
       if (i < 0) {
-        const reject = msg => { try { c.send({ t: 'reject', msg }); } catch (e) {} setTimeout(() => { try { c.close(); } catch (e) {} }, 500); };
-        if (S.phase !== 'setup') return reject('La partida ya empezó. Podrás entrar en la siguiente.');
-        if (S.players.length >= 10) return reject('La sala está llena: el máximo es 10 jugadores.');
+        if (S.phase !== 'setup') return rejectConn(c, 'rejStarted');
+        if (S.players.length >= 10) return rejectConn(c, 'rejFull');
         const used = new Set(S.players.map(p => p.color));
         S.players.push({ name, color: PCOLORS.find(col => !used.has(col)) || PCOLORS[0], score: 0, pid, online: true });
         i = S.players.length - 1;
@@ -1184,7 +1407,7 @@ input.text:focus { border-color: var(--ink); outline: none; }
     if (d.a === 'buzz') { relayBuzz(i); return; }
     remoteAct(i, d);
   }
-  // actions only the host phone may take ("solo celulares")
+  // actions only the host phone may take ("phones only")
   function hostAct(d) {
     switch (d.a) {
       case 'h_set':
@@ -1197,7 +1420,7 @@ input.text:focus { border-color: var(--ink); outline: none; }
         const p = S.players[d.i];
         if (S.phase !== 'setup' || !p || p.pid === S.hostPid) return;
         const c = conns.get(p.pid);
-        if (c) { try { c.send({ t: 'reject', msg: 'Te quitaron de la sala.' }); } catch (e) {} setTimeout(() => { try { c.close(); } catch (e) {} }, 500); conns.delete(p.pid); }
+        if (c) { rejectConn(c, 'rejKicked'); conns.delete(p.pid); }
         S.players.splice(d.i, 1);
         break;
       }
@@ -1238,9 +1461,10 @@ input.text:focus { border-color: var(--ink); outline: none; }
     const pid = S.players[i].pid, now = Date.now();
     if (now - (lastBuzz.get(pid) || 0) < 1400) return;
     lastBuzz.set(pid, now);
-    const msg = { t: 'buzz', from: i, to, sound: rand(sfx.buzz.length), text: BUZZ_TEXTS[rand(BUZZ_TEXTS.length)] };
+    // the text is an index so every screen shows it in its own language
+    const msg = { t: 'buzz', from: i, to, sound: rand(sfx.buzz.length), text: rand(I18N.es.buzz.length) };
     conns.forEach(c => { if (c.open) { try { c.send(msg); } catch (e) {} } });
-    if (S.mode === 'remote') buzzFX({ from: S.players[i], to: S.players[to], big: true, text: msg.text, sound: msg.sound });
+    if (S.mode === 'remote') buzzFX({ from: S.players[i], to: S.players[to], big: true, text: buzzText(msg.text), sound: msg.sound });
   }
   function viewFor(i) {
     const lobby = S.phase === 'setup';
@@ -1270,7 +1494,7 @@ input.text:focus { border-color: var(--ink); outline: none; }
     });
   }
 
-  // "solo celulares": this device is both the room and a player
+  // "phones only": this device is both the room and a player
   function bootPhonesHost() {
     const host = S.players.find(p => p.pid === S.hostPid);
     if (!host) { S = fresh(); save(); location.reload(); return; }
@@ -1316,8 +1540,8 @@ input.text:focus { border-color: var(--ink); outline: none; }
       const code = ($('#joincode').value || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4);
       const name = ($('#joinname').value || '').trim().slice(0, 16);
       ui.joinCode = code; ui.joinName = name;
-      if (code.length !== 4) { ui.joinErr = 'El código de la sala tiene 4 letras.'; render(); return; }
-      if (!name) { ui.joinErr = 'Escribe tu nombre.'; render(); return; }
+      if (code.length !== 4) { ui.joinErr = 'codeLen'; render(); return; }
+      if (!name) { ui.joinErr = 'typeName'; render(); return; }
       const saved = lsGet(PHONE_KEY) || {};
       lsSet(PHONE_KEY, { ...saved, code, name, pid: saved.pid || newPid(), joined: true });
       const q = testQuery(); q.set('sala', code);
@@ -1325,7 +1549,8 @@ input.text:focus { border-color: var(--ink); outline: none; }
     },
     createPhones() {
       const name = ($('#hostname').value || '').trim().slice(0, 16);
-      if (!name) { ui.hint = 'Escribe tu nombre para crear la sala.'; render(); return; }
+      ui.hostName = name;
+      if (!name) { ui.hint = 'needName'; render(); return; }
       S.mode = 'phones'; S.hostPid = newPid(); S.room = newCode(); S.phase = 'setup';
       S.players = [{ name, color: PCOLORS[0], score: 0, pid: S.hostPid, online: true }];
       ui.phonesChoice = false; ui.hint = '';
@@ -1337,7 +1562,7 @@ input.text:focus { border-color: var(--ink); outline: none; }
     kick(el) {
       const i = +el.dataset.i, p = S.players[i]; if (!p) return;
       const c = conns.get(p.pid);
-      if (c) { try { c.send({ t: 'reject', msg: 'Te quitaron de la sala.' }); } catch (e) {} setTimeout(() => { try { c.close(); } catch (e) {} }, 500); conns.delete(p.pid); }
+      if (c) { rejectConn(c, 'rejKicked'); conns.delete(p.pid); }
       S.players.splice(i, 1); save(); render();
     },
     rounds(el) { S.setup.rounds = +el.dataset.v; save(); render(); },
@@ -1360,14 +1585,17 @@ input.text:focus { border-color: var(--ink); outline: none; }
     toSetup() { backToSetup(); save(); render(); },
   });
   document.addEventListener('input', e => {
-    const t = e.target;
-    if (t.matches('.prow input')) {
-      S.setup.names[+t.dataset.i] = t.value;
-      const d = t.parentElement.querySelector('.dot'); if (d) d.textContent = initial(t.value || 'J');
+    const tg = e.target;
+    if (tg.matches('.prow input')) {
+      S.setup.names[+tg.dataset.i] = tg.value;
+      const d = tg.parentElement.querySelector('.dot'); if (d) d.textContent = initial(tg.value || 'J');
       save();
     }
-    if (t.id === 'clue1in') { S.clue1 = t.value; save(); }
-    if (t.id === 'clue2in') { S.clue2 = t.value; save(); }
+    if (tg.id === 'clue1in') { S.clue1 = tg.value; save(); }
+    if (tg.id === 'clue2in') { S.clue2 = tg.value; save(); }
+    if (tg.id === 'hostname') ui.hostName = tg.value;
+    if (tg.id === 'joincode') ui.joinCode = tg.value;
+    if (tg.id === 'joinname') ui.joinName = tg.value;
   });
 
   /* ---------- table board ---------- */
@@ -1376,7 +1604,7 @@ input.text:focus { border-color: var(--ink); outline: none; }
   board.addEventListener('click', e => {
     const d = e.target.closest('.cell'); if (!d || S.phase !== 'guess') return;
     const r = +d.dataset.r, c = +d.dataset.c;
-    if (occupied(r, c)) { ui.hint = 'Esa casilla ya tiene una ficha. Elige otra.'; sel = null; }
+    if (occupied(r, c)) { ui.hint = 'occupied'; sel = null; }
     else { sel = (sel && sel.r === r && sel.c === c) ? null : { r, c }; ui.hint = ''; }
     renderBoard(); renderTray();
   });
@@ -1400,14 +1628,17 @@ input.text:focus { border-color: var(--ink); outline: none; }
 
   /* ---------- header ---------- */
   function renderHeader() {
+    $('#brandName').textContent = t('title');
+    $('#langSlot').innerHTML = langHTML();
+    $('#menuBtn').textContent = t('menu');
     const playing = S.players.length && S.phase !== 'setup';
     $('#turninfo').textContent = playing && S.phase !== 'end'
-      ? `Turno ${S.turn + 1} de ${totalTurns()} · Vuelta ${Math.floor(S.turn / S.players.length) + 1} de ${S.rounds}` : '';
+      ? `${t('turnOf', { n: S.turn + 1, total: totalTurns() })} · ${t('roundOf', { n: Math.floor(S.turn / S.players.length) + 1, total: S.rounds })}` : '';
     $('#scores').innerHTML = !playing ? '' : S.players.map((p, i) => {
       const isG = i === giverIdx() && S.phase !== 'end';
       const isNow = S.phase === 'guess' && i === guesser();
       const off = remote() && !p.online;
-      return `<span class="chip${isNow ? ' now' : ''}${off ? ' off' : ''}" data-action="scores" ${off ? 'title="Desconectado"' : ''}>${dot(i)}${esc(p.name)}${isG ? ' <span class="tag">pista</span>' : ''} <b>${p.score}</b></span>`;
+      return `<span class="chip${isNow ? ' now' : ''}${off ? ' off' : ''}" data-action="scores" ${off ? `title="${t('offline')}"` : ''}>${dot(i)}${esc(p.name)}${isG ? ` <span class="tag">${t('clueTag')}</span>` : ''} <b>${p.score}</b></span>`;
     }).join('');
     $('#menuBtn').hidden = S.phase === 'setup';
   }
@@ -1417,15 +1648,15 @@ input.text:focus { border-color: var(--ink); outline: none; }
     const g = giverIdx();
     if (S.step === 1) {
       return S.clue1.trim()
-        ? `<div class="eyebrow">Pista de ${pname(g)}</div><div class="cluetext">«${esc(S.clue1.trim())}»</div>`
-        : `<div class="eyebrow">Pista de ${pname(g)}</div><div class="cluetext quiet">Escucha la pista de una palabra.</div>`;
+        ? `<div class="eyebrow">${t('clueOf', { name: pname(g) })}</div><div class="cluetext">${t('quote', { clue: esc(S.clue1.trim()) })}</div>`
+        : `<div class="eyebrow">${t('clueOf', { name: pname(g) })}</div><div class="cluetext quiet">${t('listen1')}</div>`;
     }
-    const first = S.clue1.trim() ? `Primera: «${esc(S.clue1.trim())}»` : '';
+    const first = S.clue1.trim() ? t('firstWas', { clue: esc(S.clue1.trim()) }) : '';
     return S.clue2.trim()
-      ? `<div class="eyebrow">Segunda pista de ${pname(g)}</div><div class="cluetext">«${esc(S.clue2.trim())}»<small>${first}</small></div>`
-      : `<div class="eyebrow">Segunda pista de ${pname(g)}</div><div class="cluetext quiet">Escucha la pista de dos palabras.${first ? '<br>' + first : ''}</div>`;
+      ? `<div class="eyebrow">${t('clue2Of', { name: pname(g) })}</div><div class="cluetext">${t('quote', { clue: esc(S.clue2.trim()) })}<small>${first}</small></div>`
+      : `<div class="eyebrow">${t('clue2Of', { name: pname(g) })}</div><div class="cluetext quiet">${t('listen2')}${first ? '<br>' + first : ''}</div>`;
   }
-  const offNote = i => remote() && !S.players[i].online ? ' <span class="net bad">desconectado</span>' : '';
+  const offNote = i => remote() && !S.players[i].online ? ` <span class="net bad">${t('offline')}</span>` : '';
   const tableTimer = () => S.phase === 'guess' && S.timer && S.deadline ? `<span class="timer">${Math.max(0, Math.ceil((S.deadline - Date.now()) / 1000))}</span>` : '';
 
   function renderTray() {
@@ -1435,184 +1666,179 @@ input.text:focus { border-color: var(--ink); outline: none; }
     if (tray.hidden) { tray.innerHTML = ''; return; }
     if (S.phase === 'pick') {
       tray.innerHTML = `
-        <div class="who">${dot(g)}<div><div class="eyebrow">Turno ${S.turn + 1} de ${totalTurns()}</div><div class="big">${pname(g)} está eligiendo su color</div><div class="sub">En su celular. Los demás, atentos a la pista.${offNote(g)}</div></div></div>`;
+        <div class="who">${dot(g)}<div><div class="eyebrow">${t('turnOf', { n: S.turn + 1, total: totalTurns() })}</div><div class="big">${t('choosing', { name: pname(g) })}</div><div class="sub">${t('choosingSub')}${offNote(g)}</div></div></div>`;
     } else if (S.phase === 'guess') {
       const p = guesser();
       tray.innerHTML = `
-        <div class="who">${dot(p)}<div><div class="eyebrow">Te toca</div><div class="big">${pname(p)}</div><div class="sub">Ficha ${S.step} de 2 · ${S.gi + 1}/${S.order.length}${remote() ? ' · desde su celular o aquí' : ''}${offNote(p)}</div></div></div>
+        <div class="who">${dot(p)}<div><div class="eyebrow">${t('yourTurn')}</div><div class="big">${pname(p)}</div><div class="sub">${t('markerOf', { n: S.step })} · ${S.gi + 1}/${S.order.length}${remote() ? ' · ' + t('fromPhoneOrHere') : ''}${offNote(p)}</div></div></div>
         ${tableTimer()}
         <div class="clue">${clueBlock()}</div>
         <div class="preview">${sel
           ? `<span class="swatch" style="background:${COLORS[sel.r][sel.c]}"></span><span class="coord">${coord(sel)}</span>`
-          : `<span class="hint ${ui.hint ? 'warn' : ''}">${ui.hint || 'Toca una casilla del tablero.'}</span>`}</div>
+          : `<span class="hint ${ui.hint ? 'warn' : ''}">${t(ui.hint || 'tapCell')}</span>`}</div>
         <div class="btns">
-          <button class="ghost" data-action="undo" ${S.gi > 0 ? '' : 'disabled'}>Deshacer</button>
-          <button class="primary" data-action="place" ${sel ? '' : 'disabled'}>Colocar ficha</button>
+          <button class="ghost" data-action="undo" ${S.gi > 0 ? '' : 'disabled'}>${t('undo')}</button>
+          <button class="primary" data-action="place" ${sel ? '' : 'disabled'}>${t('place')}</button>
         </div>`;
     } else if (S.phase === 'clue2') {
       tray.innerHTML = remote() ? `
-        <div class="who">${dot(g)}<div><div class="eyebrow">Segunda pista</div><div class="big">${pname(g)} está pensando</div><div class="sub">Dará una pista de hasta dos palabras.${offNote(g)}</div></div></div>
-        <div class="btns"><button class="ghost" data-action="undo">Deshacer</button></div>` : `
-        <div class="who">${dot(g)}<div><div class="eyebrow">Segunda pista</div><div class="big">${pname(g)}</div><div class="sub">Mira las fichas y da una pista de hasta dos palabras.</div></div></div>
-        <div class="peek" style="--peek:${COLORS[S.target.r][S.target.c]}">Mantén pulsado para ver tu color</div>
-        <div class="clue"><input class="text" id="clue2in" maxlength="40" autocomplete="off" placeholder="Escríbela aquí (opcional)" value="${esc(S.clue2)}"></div>
+        <div class="who">${dot(g)}<div><div class="eyebrow">${t('secondClue')}</div><div class="big">${t('isThinking', { name: pname(g) })}</div><div class="sub">${t('willGive2')}${offNote(g)}</div></div></div>
+        <div class="btns"><button class="ghost" data-action="undo">${t('undo')}</button></div>` : `
+        <div class="who">${dot(g)}<div><div class="eyebrow">${t('secondClue')}</div><div class="big">${pname(g)}</div><div class="sub">${t('look2')}</div></div></div>
+        <div class="peek" style="--peek:${COLORS[S.target.r][S.target.c]}">${t('holdPeek')}</div>
+        <div class="clue"><input class="text" id="clue2in" maxlength="40" autocomplete="off" placeholder="${t('clue2Ph')}" value="${esc(S.clue2)}"></div>
         <div class="btns">
-          <button class="ghost" data-action="undo">Deshacer</button>
-          <button class="primary" data-action="round2">Empezar segunda ronda</button>
+          <button class="ghost" data-action="undo">${t('undo')}</button>
+          <button class="primary" data-action="round2">${t('startRound2')}</button>
         </div>`;
     } else if (S.phase === 'ready') {
       tray.innerHTML = `
-        <div class="who">${dot(g)}<div><div class="eyebrow">Todas las fichas están puestas</div><div class="big">${pname(g)}, revela tu color</div></div></div>
+        <div class="who">${dot(g)}<div><div class="eyebrow">${t('allPlaced')}</div><div class="big">${t('revealYour', { name: pname(g) })}</div></div></div>
         <div class="btns">
-          <button class="ghost" data-action="undo">Deshacer</button>
-          <button class="primary" data-action="reveal">Revelar</button>
+          <button class="ghost" data-action="undo">${t('undo')}</button>
+          <button class="primary" data-action="reveal">${t('reveal')}</button>
         </div>`;
     } else if (S.phase === 'reveal') {
       const last = S.turn + 1 >= totalTurns();
       const order = [g, ...S.order.slice().sort((a, b) => a - b)];
       tray.innerHTML = `
-        <div class="preview"><span class="swatch" style="background:${COLORS[S.target.r][S.target.c]}"></span><div><div class="eyebrow">Era</div><span class="coord">${coord(S.target)}</span></div></div>
+        <div class="preview"><span class="swatch" style="background:${COLORS[S.target.r][S.target.c]}"></span><div><div class="eyebrow">${t('itWas')}</div><span class="coord">${coord(S.target)}</span></div></div>
         <div class="results">${order.map(i => `<span class="res">${dot(i)}${pname(i)} <b>+${S.result.pts[i]}</b></span>`).join('')}</div>
-        <div class="btns"><button class="primary" data-action="next">${last ? 'Ver resultado final' : 'Siguiente turno'}</button></div>`;
+        <div class="btns"><button class="primary" data-action="next">${last ? t('seeFinal') : t('next')}</button></div>`;
     }
   }
 
   /* ---------- sheets ---------- */
   function netLine() {
-    if (net.status === 'open') return `<span class="net ok">Sala abierta</span>`;
-    if (net.status === 'error') return `<span class="net bad">${esc(net.error)}</span>`;
-    return `<span class="net bad">${esc(net.error || 'Abriendo la sala…')}</span>`;
+    if (net.status === 'open') return `<span class="net ok">${t('roomOpen')}</span>`;
+    return `<span class="net bad">${t(net.error || 'opening')}</span>`;
   }
+  const titleRow = () => `<div class="titlerow"><h2>${t('title')}</h2>${langHTML()}</div>`;
 
   function sheetHTML() {
-    if (ui.rules) return ['scrim', '', `<h2>Cómo se juega</h2>${RULES}<div class="row end"><button class="primary" data-action="closeRules">Entendido</button></div>`, 'closeRules'];
+    if (ui.rules) return ['scrim', '', `<div class="titlerow"><h2>${t('howTo')}</h2>${langHTML()}</div>${t('rules')}<div class="row end"><button class="primary" data-action="closeRules">${t('understood')}</button></div>`, 'closeRules'];
     if (ui.scores && S.players.length) return ['scrim', 'small', `
-      <div class="eyebrow">${S.phase === 'end' ? 'Resultado final' : `Turno ${S.turn + 1} de ${totalTurns()}`}</div>
-      <h2>Así van</h2>${rankHTML(S.players, -1)}
-      <button class="primary" data-action="closeMenu">Cerrar</button>`, 'closeMenu'];
+      <div class="eyebrow">${S.phase === 'end' ? t('finalResult') : t('turnOf', { n: S.turn + 1, total: totalTurns() })}</div>
+      <h2>${t('howGoing')}</h2>${rankHTML(S.players, -1)}
+      <button class="primary" data-action="closeMenu">${t('close')}</button>`, 'closeMenu'];
     if (ui.menu) return ['scrim', '', `
-      <h2>Menú</h2>
-      <div class="row"><button class="primary" data-action="closeMenu">Seguir jugando</button><button class="ghost" data-action="rules">Cómo se juega</button></div>
-      ${S.phase !== 'end' ? '<div class="row"><button class="ghost" data-action="skipTurn">Saltar este turno</button></div>' : ''}
-      <div class="row"><button class="ghost" data-action="newGame">${ui.confirmNew ? 'Toca otra vez para terminar esta partida' : 'Nueva partida'}</button></div>
-      ${remote() ? `<p class="sub">Sala <b>${esc(S.room)}</b> · ${netLine()}<br>Si alguien se desconecta, que vuelva a abrir el enlace y entre con el mismo nombre.</p><p class="url">${esc(joinURL())}</p>` : ''}
-      <p class="sub">La partida se guarda sola en este iPad. Si cierras la página, la encontrarás donde la dejaste.</p>`, 'closeMenu'];
+      <div class="titlerow"><h2>${t('menu')}</h2>${langHTML()}</div>
+      <div class="row"><button class="primary" data-action="closeMenu">${t('keepPlaying')}</button><button class="ghost" data-action="rules">${t('howTo')}</button></div>
+      ${S.phase !== 'end' ? `<div class="row"><button class="ghost" data-action="skipTurn">${t('skipTurn')}</button></div>` : ''}
+      <div class="row"><button class="ghost" data-action="newGame">${ui.confirmNew ? t('confirmEnd') : t('newGame')}</button></div>
+      ${remote() ? `<p class="sub">${t('room', { room: `<b>${esc(S.room)}</b>` })} · ${netLine()}<br>${t('reconnectHint')}</p><p class="url">${esc(joinURL())}</p>` : ''}
+      <p class="sub">${t('autosave')}</p>`, 'closeMenu'];
     const g = S.players.length ? giverIdx() : 0;
     switch (S.phase) {
       case 'setup': {
         if (ui.home && S.mode === 'local' && !ui.phonesChoice) {
           const savedName = ui.joinName || (lsGet(PHONE_KEY) || {}).name || '';
           return ['scrim', 'wide', `
-            <h2>Pistas de Color</h2>
-            <p class="lead">Una persona ve un color en secreto y da pistas. Los demás intentan encontrarlo entre 480 casillas.</p>
+            ${titleRow()}
+            <p class="lead">${t('tagline')}</p>
             <div class="choices">
               <div class="choice">
-                <h3>Crear una partida</h3>
-                <p>Elige cómo jugar: todos en un iPad, el iPad como tablero con celulares, o solo con celulares.</p>
-                <button class="primary" data-action="goCreate">Crear partida</button>
+                <h3>${t('createTitle')}</h3>
+                <p>${t('createDesc')}</p>
+                <button class="primary" data-action="goCreate">${t('createBtn')}</button>
               </div>
               <div class="choice">
-                <h3>Entrar a una sala</h3>
-                <label class="eyebrow" for="joincode">Código de la sala</label>
+                <h3>${t('joinTitle')}</h3>
+                <label class="eyebrow" for="joincode">${t('roomCode')}</label>
                 <input class="text" id="joincode" maxlength="4" autocomplete="off" autocapitalize="characters" placeholder="ABCD" value="${esc(ui.joinCode)}">
-                <label class="eyebrow" for="joinname">Tu nombre</label>
-                <input class="text" id="joinname" maxlength="16" autocomplete="off" placeholder="Por ejemplo: Ana" value="${esc(savedName)}">
-                ${ui.joinErr ? `<p class="net bad">${esc(ui.joinErr)}</p>` : ''}
-                <button class="primary" data-action="joinRoom">Entrar</button>
+                <label class="eyebrow" for="joinname">${t('yourName')}</label>
+                <input class="text" id="joinname" maxlength="16" autocomplete="off" placeholder="${t('namePh')}" value="${esc(savedName)}">
+                ${ui.joinErr ? `<p class="net bad">${t(ui.joinErr)}</p>` : ''}
+                <button class="primary" data-action="joinRoom">${t('enter')}</button>
               </div>
             </div>
-            <div class="row end"><button class="linkbtn" data-action="rules">Cómo se juega</button></div>`];
+            <div class="row end"><button class="linkbtn" data-action="rules">${t('howTo')}</button></div>`];
         }
         const choice = ui.phonesChoice ? 'phones' : S.mode;
-        const modeSeg = `<div class="seg" role="group" aria-label="Modo de juego">
-            <button data-action="mode" data-v="local" aria-pressed="${choice === 'local'}">Un solo iPad</button>
-            <button data-action="mode" data-v="remote" aria-pressed="${choice === 'remote'}">iPad + celulares</button>
-            <button data-action="mode" data-v="phones" aria-pressed="${choice === 'phones'}">Solo celulares</button></div>`;
+        const modeSeg = `<div class="seg" role="group" aria-label="${t('gameMode')}">
+            <button data-action="mode" data-v="local" aria-pressed="${choice === 'local'}">${t('modeLocal')}</button>
+            <button data-action="mode" data-v="remote" aria-pressed="${choice === 'remote'}">${t('modeRemote')}</button>
+            <button data-action="mode" data-v="phones" aria-pressed="${choice === 'phones'}">${t('modePhones')}</button></div>`;
         const settings = n => `
-          <div class="setting"><h3>¿Cuántas veces da pistas cada persona?</h3>
-            <div class="row">${segHTML('rounds', S.setup.rounds, [[1, '1'], [2, '2'], [3, '3']])}<span class="sub">${n * S.setup.rounds} turnos en total</span></div></div>
-          <div class="setting"><h3>Tiempo para colocar cada ficha</h3>${segHTML('timer', S.setup.timer, timerOptions)}</div>`;
+          <div class="setting"><h3>${t('roundsQ')}</h3>
+            <div class="row">${segHTML('rounds', S.setup.rounds, [[1, '1'], [2, '2'], [3, '3']])}<span class="sub">${t('turnsTotal', { n: n * S.setup.rounds })}</span></div></div>
+          <div class="setting"><h3>${t('timerQ')}</h3>${segHTML('timer', S.setup.timer, timerOptions())}</div>`;
+        const backRow = extra => `<div class="row end"><button class="linkbtn back" data-action="goHome">${t('back')}</button><button class="linkbtn" data-action="rules">${t('howTo')}</button>${extra}</div>`;
         if (choice === 'phones') {
           return ['scrim', '', `
-            <h2>Pistas de Color</h2>
+            ${titleRow()}
             ${modeSeg}
-            <p class="lead">Sin iPad: este celular abre la sala y también juega. Los demás entran escaneando el código QR que aparecerá en tu pantalla.</p>
-            <label class="eyebrow" for="hostname">Tu nombre</label>
-            <input class="text" id="hostname" maxlength="16" autocomplete="off" placeholder="Por ejemplo: Mamá">
-            ${ui.hint ? `<p class="net bad">${esc(ui.hint)}</p>` : ''}
-            <p class="sub">Mantén tu pantalla encendida durante la partida: tu celular es la sala.</p>
-            <div class="row end"><button class="linkbtn back" data-action="goHome">← Volver</button><button class="linkbtn" data-action="rules">Cómo se juega</button><button class="primary" data-action="createPhones">Crear sala</button></div>`];
+            <p class="lead">${t('phonesLead')}</p>
+            <label class="eyebrow" for="hostname">${t('yourName')}</label>
+            <input class="text" id="hostname" maxlength="16" autocomplete="off" placeholder="${t('hostNamePh')}" value="${esc(ui.hostName)}">
+            ${ui.hint ? `<p class="net bad">${t(ui.hint)}</p>` : ''}
+            <p class="sub">${t('keepOn')}</p>
+            ${backRow(`<button class="primary" data-action="createPhones">${t('createRoom')}</button>`)}`];
         }
         if (remote()) {
           const url = joinURL(), n = S.players.length;
           return ['scrim', 'wide', `
-            <h2>Pistas de Color</h2>
+            ${titleRow()}
             ${modeSeg}
             <div class="lobby">
-              <div class="qr" aria-label="Código QR para entrar">${net.status === 'open' ? qrSVG(url) : ''}</div>
+              <div class="qr" aria-label="${t('qr')}">${net.status === 'open' ? qrSVG(url) : ''}</div>
               <div class="stack">
-                <div class="eyebrow">Código de la sala</div>
+                <div class="eyebrow">${t('roomCode')}</div>
                 <div class="roomcode">${esc(S.room || '····')}</div>
-                <p>Escaneen el código QR con la cámara del celular, o abran esta dirección y escriban el código:</p>
+                <p>${t('scanLead')}</p>
                 <div class="url">${esc(url)}</div>
                 ${netLine()}
               </div>
             </div>
-            <h3>Jugadores conectados</h3>
+            <h3>${t('connectedPlayers')}</h3>
             <div class="players">${n ? S.players.map((p, i) => `
-              <div class="prow">${dotFor(p)}<span class="nm">${esc(p.name)}</span>${p.online ? '<span class="net ok">listo</span>' : '<span class="net bad">desconectado</span>'}
-                <button class="x" data-action="kick" data-i="${i}" aria-label="Quitar a ${esc(p.name)}">×</button></div>`).join('')
-              : '<div class="empty">Todavía no ha entrado nadie. Cuando alguien entre, aparecerá aquí.</div>'}
+              <div class="prow">${dotFor(p)}<span class="nm">${esc(p.name)}</span>${p.online ? `<span class="net ok">${t('ready')}</span>` : `<span class="net bad">${t('offline')}</span>`}
+                <button class="x" data-action="kick" data-i="${i}" aria-label="${t('removeX', { name: esc(p.name) })}">×</button></div>`).join('')
+              : `<div class="empty">${t('nobodyYet')}</div>`}
             </div>
             ${settings(n)}
-            <div class="row end"><button class="linkbtn back" data-action="goHome">← Volver</button><button class="linkbtn" data-action="rules">Cómo se juega</button><button class="primary" data-action="start" ${n >= 2 ? '' : 'disabled'}>${n >= 2 ? 'Empezar partida' : 'Faltan jugadores'}</button></div>`];
+            ${backRow(`<button class="primary" data-action="start" ${n >= 2 ? '' : 'disabled'}>${n >= 2 ? t('start') : t('needPlayers')}</button>`)}`];
         }
         const names = S.setup.names;
         return ['scrim', '', `
-          <h2>Pistas de Color</h2>
-          <p class="lead">Una persona ve un color en secreto y da pistas. Los demás intentan encontrarlo entre 480 casillas.</p>
+          ${titleRow()}
+          <p class="lead">${t('tagline')}</p>
           ${modeSeg}
-          <h3>Jugadores</h3>
+          <h3>${t('players')}</h3>
           <div class="players">${names.map((name, i) => `
             <div class="prow"><span class="dot" style="--pc:${PCOLORS[i]}">${esc(initial(name || 'J'))}</span>
-              <input class="text" id="p${i}" data-i="${i}" maxlength="16" autocomplete="off" placeholder="Jugador ${i + 1}" value="${esc(name)}">
-              <button class="x" data-action="removePlayer" data-i="${i}" aria-label="Quitar jugador" ${names.length <= 2 ? 'disabled' : ''}>×</button></div>`).join('')}
+              <input class="text" id="p${i}" data-i="${i}" maxlength="16" autocomplete="off" placeholder="${t('playerN', { n: i + 1 })}" value="${esc(name)}">
+              <button class="x" data-action="removePlayer" data-i="${i}" aria-label="${t('removePlayer')}" ${names.length <= 2 ? 'disabled' : ''}>×</button></div>`).join('')}
           </div>
-          ${names.length < 10 ? '<div><button class="linkbtn" data-action="addPlayer">+ Añadir jugador</button></div>' : ''}
+          ${names.length < 10 ? `<div><button class="linkbtn" data-action="addPlayer">${t('addPlayer')}</button></div>` : ''}
           ${settings(names.length)}
-          <div class="row end"><button class="linkbtn back" data-action="goHome">← Volver</button><button class="linkbtn" data-action="rules">Cómo se juega</button><button class="primary" data-action="start">Empezar partida</button></div>`];
+          ${backRow(`<button class="primary" data-action="start">${t('start')}</button>`)}`];
       }
       case 'handoff':
         return ['private', '', `
-          <div class="eyebrow">Turno ${S.turn + 1} de ${totalTurns()}</div>
-          <div class="who">${dot(g)}<h2>Le toca dar la pista a ${pname(g)}</h2></div>
-          <p class="lead">Pásale el iPad a ${pname(g)}. Los demás, no miren la pantalla hasta que diga la pista.</p>
-          <div class="row end"><button class="primary" data-action="showCard">Soy ${pname(g)}: ver mi tarjeta</button></div>`];
+          <div class="eyebrow">${t('turnOf', { n: S.turn + 1, total: totalTurns() })}</div>
+          <div class="who">${dot(g)}<h2>${t('handoffTitle', { name: pname(g) })}</h2></div>
+          <p class="lead">${t('handoffLead', { name: pname(g) })}</p>
+          <div class="row end"><button class="primary" data-action="showCard">${t('iAm', { name: pname(g) })}</button></div>`];
       case 'pick':
         if (remote()) return null;
         return ['private', '', `
-          <h2>Elige tu color secreto</h2>
-          <p>Toca uno de los cuatro. Luego piensa una pista de una palabra, sin nombrar colores.</p>
+          <h2>${t('pickTitle')}</h2>
+          <p>${t('pickLead')}</p>
           <div class="cardpick">${S.card.map((p, i) => {
             const on = S.target && S.target.r === p.r && S.target.c === p.c;
             return `<button class="opt" data-action="pickCard" data-i="${i}" aria-pressed="${on}"><span class="fill" style="background:${COLORS[p.r][p.c]}"></span>${coord(p)}</button>`;
           }).join('')}</div>
-          <div><button class="linkbtn" data-action="redraw">Sacar otra tarjeta</button></div>
-          <label for="clue1in" class="eyebrow">Tu pista (opcional: se mostrará a todos)</label>
-          <input class="text" id="clue1in" maxlength="30" autocomplete="off" placeholder="Por ejemplo: aguacate" value="${esc(S.clue1)}">
-          <div class="row end"><button class="primary" data-action="hideCard" ${S.target ? '' : 'disabled'}>Listo: ocultar y empezar</button></div>`];
-      case 'end': {
-        const ranked = S.players.map(p => p.score).sort((a, b) => b - a);
-        const winners = S.players.filter(p => p.score === ranked[0]);
-        const title = winners.length > 1
-          ? `¡Empate entre ${winners.slice(0, -1).map(w => esc(w.name)).join(', ')} y ${esc(winners[winners.length - 1].name)}!`
-          : `¡Gana ${esc(winners[0].name)}!`;
+          <div><button class="linkbtn" data-action="redraw">${t('redraw')}</button></div>
+          <label for="clue1in" class="eyebrow">${t('clue1Label')}</label>
+          <input class="text" id="clue1in" maxlength="30" autocomplete="off" placeholder="${t('cluePh')}" value="${esc(S.clue1)}">
+          <div class="row end"><button class="primary" data-action="hideCard" ${S.target ? '' : 'disabled'}>${t('hideStart')}</button></div>`];
+      case 'end':
         return ['scrim', '', `
-          <div class="eyebrow">Fin de la partida</div>
-          <h2>${title}</h2>
+          <div class="eyebrow">${t('endOf')}</div>
+          <h2>${winnerTitle(S.players)}</h2>
           ${rankHTML(S.players, -1)}
-          <div class="row end"><button class="ghost" data-action="toSetup">Cambiar jugadores</button><button class="primary" data-action="rematch">Jugar otra vez</button></div>`];
-      }
+          <div class="row end"><button class="ghost" data-action="toSetup">${t('changePlayers')}</button><button class="primary" data-action="rematch">${t('playAgain')}</button></div>`];
     }
     return null;
   }
@@ -1620,19 +1846,19 @@ input.text:focus { border-color: var(--ink); outline: none; }
   function renderSheet() {
     const sh = $('#sheet'), res = sheetHTML();
     if (!res) { sh.hidden = true; sh.innerHTML = ''; delete sh.dataset.close; return; }
-    const active = document.activeElement, activeId = active && active.id, val = active && active.value;
+    const active = document.activeElement, activeId = active && active.id;
     sh.className = 'sheet ' + res[0];
     sh.innerHTML = `<div class="card ${res[1]}" role="dialog" aria-modal="true">${res[2]}</div>`;
     if (res[3]) sh.dataset.close = res[3]; else delete sh.dataset.close;
     sh.hidden = false;
-    if (activeId) { const el = document.getElementById(activeId); if (el && el.tagName === 'INPUT') { if (activeId === 'hostname') el.value = val; el.focus(); } }
+    if (activeId) { const el = document.getElementById(activeId); if (el && el.tagName === 'INPUT') el.focus(); }
   }
 
   function render() {
     if (S.phase === 'guess' || S.timerKey) syncTimer();
     if (phonesOnly()) { broadcast(); return; }
     renderHeader(); renderBoard(); renderTray(); renderSheet();
-    if (S.notice && S.notice.id !== ui.lastNotice && Date.now() - S.notice.id < 4000) { ui.lastNotice = S.notice.id; showToast(S.notice.text); }
+    if (S.notice && S.notice.id !== ui.lastNotice && Date.now() - S.notice.id < 4000) { ui.lastNotice = S.notice.id; showToast(noticeText(S.notice)); }
     if (remote()) broadcast();
   }
 
@@ -1647,8 +1873,10 @@ input.text:focus { border-color: var(--ink); outline: none; }
     S = (data && data.state) || load() || fresh();
     S = Object.assign(fresh(), S);
     S.setup = Object.assign({ rounds: 2, timer: 0, names: ['', '', '', ''] }, S.setup);
+    if (S.notice && !S.notice.key) S.notice = null;   // saved by an older version
     S.players.forEach(p => { p.online = false; });
     if (phonesOnly()) { bootPhonesHost(); return; }
+    rerender = () => render();
     fit();
     if (remote()) startHost();
     render();
